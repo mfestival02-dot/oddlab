@@ -1,0 +1,7 @@
+# 영상 원본·렌더 결과·폰트는 저장소에 올리지 않음 (드라이브에 보관)
+node_modules/
+1_vs_all/out/
+1_vs_all/src/game/
+1_vs_all/src/game_rec/
+1_vs_all/src/fonts/
+1_vs_all/src/check/
