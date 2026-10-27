@@ -39,11 +39,12 @@ function cutout(ctx, cx, cy, w, h, color, { rot = 0, seed = 1, scale = 1, alpha 
   ctx.save(); ctx.globalAlpha = 0.18; ctx.fillStyle = ctx.createPattern(grain, 'repeat'); path(); ctx.fill(); ctx.restore();
   ctx.restore();
 }
-function hand(ctx, s, x, y, { size = 120, color = INKC, font = 'Ssukssuk', p = 1, bf = 0, seed = 0, align = 'center', rot = 0, alpha = 1 } = {}) {
+function hand(ctx, s, x, y, { size = 120, color = INKC, font = 'Ssukssuk', p = 1, bf = 0, seed = 0, align = 'center', rot = 0, alpha = 1, edge = null } = {}) {
   if (p <= 0) return; const f = `400 ${size}px ${font}`; const w = textWidth(ctx, s, f);
   ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x + jit(seed, bf, 1.5), y + jit(seed + 1, bf, 1.5)); ctx.rotate(rot);
   const left = align === 'center' ? -w / 2 : align === 'left' ? 0 : -w;
   ctx.beginPath(); ctx.rect(left - 20, -size, w * p + 40, size * 2); ctx.clip();
+  if (edge) txt(ctx, s, 0, 0, { size, font, weight: 400, fill: edge, stroke: edge, lw: size * 0.2, align });
   txt(ctx, s, 0, 0, { size, font, weight: 400, fill: color, stroke: color, lw: size * 0.06, align });
   ctx.restore(); return w;
 }
@@ -55,6 +56,7 @@ function person(ctx, x, y, s, { color = INKC, seed = 0, bf = 0, p = 1, crown = f
   if (crown) { const cy = y - s * 1.65; cutout(ctx, x, cy, s * 0.95, s * 0.5, YEL, { seed: 77, rot: 0.05 }); ink(ctx, [[x - s * .45, cy + s * .25], [x - s * .45, cy - s * .25], [x - s * .22, cy], [x, cy - s * .3], [x + s * .22, cy], [x + s * .45, cy - s * .25], [x + s * .45, cy + s * .25]], { w: s * 0.08, seed: 80, bf, amp: s * .03, close: true }); }
   ctx.restore();
 }
+function paperDisc(ctx, x, y, r) { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = PAPER; ctx.fill(); ctx.fillStyle = ctx.createPattern(grain, 'repeat'); ctx.fill(); ctx.restore(); }
 // 큰 낙서 얼굴: expr 'think' | 'smirk' | 'flash'(번뜩) | 'shock'
 function bigFace(ctx, x, y, r, bf, { seed = 50, p = 1, color = INKC, expr = 'think' } = {}) {
   ink(ctx, circlePts(x, y, r, 36), { w: r * 0.04, color, seed, bf, p, amp: 3 });
@@ -93,7 +95,6 @@ function paddle(ctx, x, y, kind, bf, { scale = 1, rot = 0, alpha = 1 } = {}) {
   ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineWidth = 50;
   if (kind === 'O') { ctx.beginPath(); ctx.arc(0, 0, 92, 0, 7); ctx.stroke(); } else { ctx.beginPath(); ctx.moveTo(-95, -95); ctx.lineTo(95, 95); ctx.moveTo(95, -95); ctx.lineTo(-95, 95); ctx.stroke(); }
   ctx.restore();
-  ink(ctx, [[-190, -190], [190, -190], [190, 190], [-190, 190]].map(([a, b]) => [x + (a * Math.cos(rot) - b * Math.sin(rot)) * scale, y + (a * Math.sin(rot) + b * Math.cos(rot)) * scale]), { w: 5, seed: kind === 'O' ? 300 : 310, bf, amp: 2.5, close: true, color: INKC });
 }
 function lightbulb(ctx, bx, by, bf, p) { cutout(ctx, bx, by, 150, 170, YEL, { seed: 9, scale: easeOutBack(clamp(p)) }); ink(ctx, circlePts(bx, by - 10, 60, 20), { w: 7, seed: 70, bf, p, amp: 3 }); ink(ctx, [[bx - 25, by + 55], [bx + 25, by + 55]], { w: 7, seed: 71, bf, p }); for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.5; ink(ctx, [[bx + Math.cos(a) * 85, by - 10 + Math.sin(a) * 85], [bx + Math.cos(a) * 115, by - 10 + Math.sin(a) * 115]], { w: 6, color: RED, seed: 72 + i, bf, p: clamp(p * 2 - 1) }); } }
 function crowdDraw(ctx, t, bf, { color = INKC, accent = BLUE, alpha = 1, split = 0, rows = [0, 10], y0 = 600, dy = 50 } = {}) {
@@ -101,9 +102,9 @@ function crowdDraw(ctx, t, bf, { color = INKC, accent = BLUE, alpha = 1, split =
     let col = i % 9 === 0 ? accent : color; let dx = 0; if (split) { const left = x < 960; col = left ? RED : BLUE; dx = (left ? -1 : 1) * 70 * split; }
     ctx.save(); ctx.globalAlpha = alpha; person(ctx, x + dx, y, 16, { seed: i * 13, bf, color: col }); ctx.restore(); });
 }
-function banner(ctx, s, x, y, w, h, color, textColor, { p = 1, rot = -0.03, seed = 4, bf = 0, size = 190, tseed = 90, punch = 1.3 } = {}) {
+function banner(ctx, s, x, y, w, h, color, textColor, { p = 1, rot = -0.03, seed = 4, bf = 0, size = 190, tseed = 90, punch = 1.3, edge = null } = {}) {
   cutout(ctx, x, y, w, h, color, { rot, seed, scale: lerp(punch, 1, easeOutBack(clamp(p))) });
-  hand(ctx, s, x, y + size * 0.03, { size, color: textColor, bf, seed: tseed, rot, p: clamp(p * 1.6 - 0.2) });
+  hand(ctx, s, x, y + size * 0.03, { size, color: textColor, bf, seed: tseed, rot, p: clamp(p * 1.6 - 0.2), edge });
 }
 // 인게임 사진 (종이 액자 + 프레임 시퀀스)
 function photo(ctx, name, fi, x, y, w, h, bf, { rot = 0, scale = 1, seed = 1 } = {}) {
@@ -112,7 +113,7 @@ function photo(ctx, name, fi, x, y, w, h, bf, { rot = 0, scale = 1, seed = 1 } =
   ctx.restore();
 }
 const CUTS = [['decibel', 12.0, 0.45, 0], ['math', 12.45, 0.45, 0], ['ten', 12.9, 0.45, 0], ['nim', 13.35, 0.65, 11]];
-const ROUNDS = [['1R', '데시벨 게임', RED], ['2R', 'NIM 게임', BLUE], ['3R', '수학문제 맞추기', VIOLET], ['4R', '10초 맞추기', GREEN]];
+const ROUNDS = [['1R', '데시벨 게임', RED], ['2R', '수학문제 맞추기', VIOLET], ['3R', '10초 맞추기', GREEN], ['4R', 'NIM 게임', BLUE]]; // CUTS 순서와 같게
 
 // ───────── 장면 ─────────
 function S0(ctx, t, bf) { // 전략은 배웠다.
@@ -121,7 +122,7 @@ function S0(ctx, t, bf) { // 전략은 배웠다.
   cutout(ctx, 1280, 640, 720, 460, BOARD, { rot: 0.02, seed: 21, scale: lerp(0.9, 1, prog(t, 0, 0.3, easeOutBack)) });
   const gx = 1280, gy = 640, g = 120;
   [[-1, 0], [1, 0]].forEach(([k, _], i) => { ink(ctx, [[gx + k * g / 2 * 1, gy - g * 1.5], [gx + k * g / 2, gy + g * 1.5]], { w: 7, color: CHALK, seed: 22 + i, bf, p: prog(t, 0.1 + i * 0.1, 0.25), amp: 2 }); ink(ctx, [[gx - g * 1.5, gy + k * g / 2], [gx + g * 1.5, gy + k * g / 2]], { w: 7, color: CHALK, seed: 24 + i, bf, p: prog(t, 0.3 + i * 0.1, 0.25), amp: 2 }); });
-  const marks = [['O', 0, 0, 0.55], ['X', -1, -1, 0.75], ['O', -1, 1, 0.95], ['X', 1, -1, 1.15], ['O', 1, -1 + 2, 1.35]];
+  const marks = [['O', 0, 0, 0.55], ['X', 1, -1, 0.75], ['O', -1, -1, 0.9], ['X', -1, 0, 1.0], ['O', 1, 1, 1.15]]; // O 대각선 빙고
   marks.forEach(([m, cx, cy, st], i) => { const p = prog(t, st, 0.2); if (p <= 0) return; const x = gx + cx * g, y = gy + cy * g; if (m === 'O') ink(ctx, circlePts(x, y, 38, 16), { w: 8, color: SKYB, seed: 30 + i, bf, p }); else { ink(ctx, [[x - 34, y - 34], [x + 34, y + 34]], { w: 8, color: PINKR, seed: 30 + i, bf, p: Math.min(1, p * 2) }); ink(ctx, [[x + 34, y - 34], [x - 34, y + 34]], { w: 8, color: PINKR, seed: 40 + i, bf, p: clamp(p * 2 - 1) }); } });
   ink(ctx, [[gx - g * 1.3, gy - g * 1.3], [gx + g * 1.3, gy + g * 1.3]], { w: 12, color: YEL, seed: 45, bf, p: prog(t, 1.25, 0.3), amp: 3 }); // 승리선 (대각선)
   // 왼쪽 얼굴: 1.2초에 번뜩
@@ -138,13 +139,15 @@ function S2(ctx, t, bf) { // 상대의 생각을 읽고! — 포켓몬 대치 �
   paper(ctx);
   // 상대 (우상단) + 발판
   ink(ctx, circlePts(1500, 560, 260, 30).map(([x, y]) => [x, 560 + (y - 560) * 0.3]), { w: 6, seed: 60, bf, amp: 2, close: true });
-  bigFace(ctx, 1500, 360, 190, bf, { seed: 41, expr: 'smirk', p: prog(t, L(2), 0.4) });
+  const pf = prog(t, L(2), 0.4); if (pf > 0) paperDisc(ctx, 1500, 360, 190);
+  bigFace(ctx, 1500, 360, 190, bf, { seed: 41, expr: 'smirk', p: pf });
   // 나 (좌하단, 뒤통수 크게) + 발판
-  ink(ctx, circlePts(460, 1000, 420, 30).map(([x, y]) => [x, 1000 + (y - 1000) * 0.25]), { w: 6, seed: 61, bf, amp: 2, close: true });
-  const pp = prog(t, L(2), 0.4, easeOutExpo); silInk(ctx, 460, 1100 + (1 - pp) * 200, 520, bf, { fill: NAVY, seed: 62, lw: 9 });
-  for (let i = 0; i < 5; i++) ink(ctx, [[380 + i * 40, 640 + hash(i, 3) * 30], [370 + i * 40, 600 + hash(i, 4) * 20]], { w: 6, color: INKC, seed: 63 + i, bf, amp: 2, p: pp });
+  ink(ctx, circlePts(460, 1040, 480, 30).map(([x, y]) => [x, 1040 + (y - 1040) * 0.23]), { w: 6, seed: 61, bf, amp: 2, close: true });
+  const pp = prog(t, L(2), 0.4, easeOutExpo), hy = 1000 + (1 - pp) * 200, hr = 330; // 뒤통수 (머리만)
+  paperDisc(ctx, 460, hy, hr); ink(ctx, circlePts(460, hy, hr, 36), { w: hr * 0.04, seed: 62, bf, amp: 3 });
+  for (let i = 0; i < 5; i++) { const hx = 460 + (i - 2) * 60, a = (i - 2) * 0.18; ink(ctx, [[hx + Math.sin(a) * hr * 0.1, hy - hr * 0.78], [hx + Math.sin(a) * hr * 0.2, hy - hr * 0.97]], { w: 7, color: INKC, seed: 63 + i, bf, amp: 2, p: pp }); }
   // 시선 연결 (점선 대각선) + ? !
-  const p = prog(t, L(2) + B(1), 0.6); const pts = []; for (let i = 0; i <= 18; i++) pts.push([lerp(640, 1330, i / 18), lerp(640, 420, i / 18)]);
+  const p = prog(t, L(2) + B(1), 0.6); const pts = []; for (let i = 0; i <= 18; i++) pts.push([lerp(720, 1330, i / 18), lerp(700, 420, i / 18)]);
   for (let i = 0; i < 18; i += 2) { const q = pts[i], q2 = pts[i + 1]; if (i / 18 > p) break; ink(ctx, [q, q2], { w: 8, color: RED, seed: 66 + i, bf, amp: 2 }); }
   [[760, 520, '?', YEL, INKC], [1150, 350, '!', BLUE, CHALK]].forEach(([x, y, s, c, tc], i) => { const q = prog(t, L(2) + B(1.5 + i * 1.5), 0.35, easeOutBack); if (q <= 0) return; cutout(ctx, x, y, 150, 150, c, { seed: 44 + i, scale: q, rot: (i ? 1 : -1) * 0.1 }); hand(ctx, s, x, y + 8, { size: 120, bf, seed: 46 + i, color: tc, alpha: q }); });
   hand(ctx, '상대의 생각을 읽고!', 120, 170, { size: 150, bf, seed: 40, align: 'left', p: prog(t, L(2), 0.45, easeInOutCubic) });
@@ -174,12 +177,12 @@ function S4(ctx, t, bf) { // 승부를 뒤집어라! — 극적 뒤집기
   if (lt < 2 / FPS) { ctx.fillStyle = CHALK; ctx.fillRect(0, 0, W, H); }
   else if (lt >= BEAT * 2 && lt < BEAT * 2 + 1 / FPS) { ctx.fillStyle = 'rgba(246,241,228,0.5)'; ctx.fillRect(0, 0, W, H); }
   const p = prog(t, L(4) + 0.45, 0.35);
-  ctx.save(); ctx.translate(sh.x * 0.6, sh.y * 0.6); banner(ctx, '승부를 뒤집어라!', 960, 640, 1560, 320, RED, CHALK, { p, bf, seed: 6, size: 190, tseed: 110, punch: 2.6 }); ctx.restore();
+  ctx.save(); ctx.translate(sh.x * 0.6, sh.y * 0.6); banner(ctx, '승부를 뒤집어라!', 960, 640, 1720, 350, RED, CHALK, { p, bf, seed: 6, size: 225, tseed: 110, punch: 2.6, edge: NAVY }); ctx.restore();
 }
 function S5(ctx, t, bf) { // 때로는 혼자, 때로는 팀으로!
   paper(ctx, NAVY, true);
   const p1 = prog(t, L(5), 0.4, easeInOutCubic), p2 = prog(t, L(5) + B(2.5), 0.4, easeInOutCubic), team = t >= L(5) + B(2.5);
-  if (!team) { const p = prog(t, L(5), 0.4, easeOutBack); ctx.save(); ctx.translate(960, 640); ctx.scale(p, p); ctx.translate(-960, -640); person(ctx, 960, 640, 200, { seed: 500, bf, color: CHALK, crown: true }); ctx.restore(); hand(ctx, '때로는 혼자,', 960, 180, { size: 170, bf, seed: 120, color: CHALK, p: p1 }); }
+  if (!team) { const p = prog(t, L(5), 0.4, easeOutBack); ctx.save(); ctx.translate(960, 700); ctx.scale(p, p); ctx.translate(-960, -700); person(ctx, 960, 700, 200, { seed: 500, bf, color: CHALK, crown: true }); ctx.restore(); hand(ctx, '때로는 혼자,', 960, 180, { size: 170, bf, seed: 120, color: CHALK, p: p1 }); }
   else {
     const sp = easeOutBack(p2); crowdDraw(ctx, t, bf, { split: sp, rows: [0, 7], y0: 640, dy: 60 });
     cutout(ctx, 400, 520, 320, 150, RED, { seed: 130, scale: sp, rot: -0.05 }); hand(ctx, 'A팀', 400, 528, { size: 110, color: CHALK, bf, seed: 131, alpha: sp });
@@ -190,9 +193,10 @@ function S5(ctx, t, bf) { // 때로는 혼자, 때로는 팀으로!
 }
 function S6(ctx, t, bf) { // 이곳에 펼쳐지는 예측불허 두뇌대결! — 인게임 컷
   paper(ctx); crowdDraw(ctx, t, bf, { alpha: 0.35, rows: [0, 10], y0: 560, dy: 56 });
-  CUTS.forEach(([name, t0, dur, from], i) => { if (t < t0) return; const p = prog(t, t0, 0.22, easeOutBack); const fi = from + Math.floor((t - t0) * 30); photo(ctx, name, Math.min(fi, from + dur * 30 + 8), 960 + (i % 2 ? 30 : -30), 640, 1180, 664, bf, { rot: (i % 2 ? 1 : -1) * 0.03, scale: lerp(1.35, 1, p), seed: 200 + i });
-    const [rn, rname, rc] = ROUNDS[i]; cutout(ctx, 330 + (i % 2 ? 0 : -20), 330, 330, 110, rc, { seed: 210 + i, rot: -0.06, scale: p }); hand(ctx, `${rn} ${rname}`, 330 + (i % 2 ? 0 : -20), 336, { size: 54, color: CHALK, bf, seed: 220 + i, rot: -0.06, alpha: p }); });
-  hand(ctx, '이곳에 펼쳐지는 예측불허 두뇌대결!', 960, 160, { size: 125, bf, seed: 140, p: prog(t, L(6), 0.5, easeInOutCubic) });
+  CUTS.forEach(([name, t0, dur, from], i) => { if (t < t0) return; const p = prog(t, t0, 0.22, easeOutBack); const fi = from + Math.floor((t - t0) * 30); photo(ctx, name, Math.min(fi, from + dur * 30 + 8), 960 + (i % 2 ? 30 : -30), 600, 1600, 900, bf, { rot: (i % 2 ? 1 : -1) * 0.03, scale: lerp(1.35, 1, p), seed: 200 + i });
+    const [rn, rname, rc] = ROUNDS[i], label = `${rn} ${rname}`, tw = textWidth(ctx, label, '400 80px Ssukssuk') + 110, tx = 150 + tw / 2 + (i % 2 ? 20 : 0);
+    cutout(ctx, tx, 205, tw, 140, rc, { seed: 210 + i, rot: -0.05, scale: p }); hand(ctx, label, tx, 212, { size: 80, color: CHALK, bf, seed: 220 + i, rot: -0.05, alpha: p }); });
+  hand(ctx, '이곳에 펼쳐지는 예측불허 두뇌대결!', 960, 72, { size: 100, bf, seed: 140, p: prog(t, L(6), 0.5, easeInOutCubic) });
 }
 function S7(ctx, t, bf) { // 타이틀 (ENDV: 0 현재 / 1 팻말 / 2 칠판 / 3 객석)
   const p = prog(t, L(7) + 0.05, 0.4, easeOutBack), pw = prog(t, L(7) + 0.05, 0.5, easeInOutCubic), p2 = prog(t, L(7) + B(1.5), 0.35, easeOutBack), p3 = prog(t, L(7) + B(3), 0.5);
