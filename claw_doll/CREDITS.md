@@ -2,10 +2,7 @@
 
 | 에셋 | 용도 | 작가 / 출처 | 라이선스 |
 |---|---|---|---|
-| Curly Teddy Natural (법선·거칠기 맵) | 봉제인형 천 재질 | Poly Haven — https://polyhaven.com/a/curly_teddy_natural | CC0 |
-| Polar Fleece (법선·거칠기 맵) | 봉제인형·후드티 천 재질 | Poly Haven — https://polyhaven.com/a/polar_fleece | CC0 |
-| Velour Velvet (법선·거칠기 맵) | 봉제인형·기계 바닥 재질 | Poly Haven — https://polyhaven.com/a/velour_velvet | CC0 |
-| Warm Bar (HDRI) | 환경광과 반사 | Greg Zaal, Jarod Guest / Poly Haven — https://polyhaven.com/a/warm_bar | CC0 |
 | generic-hand (left.glb, right.glb) | 손님 손 모델 | @webxr-input-profiles/assets (npm), Copyright 2019 Amazon | MIT |
 
-텍스처는 1k 원본을 512로 줄여 `assets/`에 넣었다.
+그 밖의 모델과 그림(인형, 햄스터, 기계, 손님 얼굴, 배경)은 모두 코드로 직접 만든 것이다.
+디자인 방향의 참고작은 Steam의 Plush Party이며, 그 게임의 캐릭터·모델·로고는 쓰지 않았다.
