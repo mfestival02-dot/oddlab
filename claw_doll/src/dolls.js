@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { fabric, bead, felt } from './materials.js';
-import { lighter, canvasTex, roundRect, FONT } from './util.js';
+import { toon, bead, white, felt } from './materials.js';
+import { lighter, rnd, canvasTex, roundRect, FONT } from './util.js';
 
 // ---------- 조각 만들기 (반지름 1 기준, 나중에 통째로 키운다) ----------
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
@@ -10,7 +10,6 @@ function place(geo, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) {
   _m.compose(new THREE.Vector3(x, y, z), _q, new THREE.Vector3(sx, sy, sz));
   return geo.applyMatrix4(_m);
 }
-// 타원체
 const ell = (sx, sy, sz, x, y, z, rx = 0, ry = 0, rz = 0, seg = 28) =>
   place(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.7)), x, y, z, rx, ry, rz, sx, sy, sz);
 function tint(geo, hex) {
@@ -19,173 +18,258 @@ function tint(geo, hex) {
   geo.setAttribute('color', new THREE.BufferAttribute(a, 3));
   return geo;
 }
-// 실로 놓은 'ω' 입
-function mouth(y, z, s = 1, hex = 0x4a2f33) {
-  const out = [];
-  for (const k of [-1, 1]) {
-    const g = new THREE.TorusGeometry(0.07 * s, 0.014 * s, 6, 14, Math.PI);
-    out.push(tint(place(g, k * 0.07 * s, y, z, 0, 0, Math.PI), hex));
-  }
-  return out;
-}
-const blush = (x, y, z, ry) => tint(ell(0.11, 0.07, 0.02, x, y, z, 0, ry, 0, 14), 0xff8fa6);
+const INK = 0x3a2530;
 function finish(group, parts, mats) {
   for (const k of Object.keys(parts)) {
     if (!parts[k].length) continue;
-    const mesh = new THREE.Mesh(mergeGeometries(parts[k]), mats[k]);
-    mesh.castShadow = k !== 'felt';
-    mesh.receiveShadow = true;
+    const mesh = new THREE.Mesh(mergeGeometries(parts[k].map((g) => (g.index ? g.toNonIndexed() : g))), mats[k]);
+    mesh.castShadow = k === 'main' || k === 'light' || k === 'felt';
+    mesh.receiveShadow = k !== 'dark' && k !== 'white';
     group.add(mesh);
     group.userData[k] = mesh;
   }
   return group;
 }
 
-const WEAVE = { bear: 'teddy', bunny: 'fleece', cat: 'velvet', chick: 'fleece', frog: 'velvet' };
+// 머리(타원체) 표면 위에 얼굴 조각을 붙일 자리와 기울기
+function onHead(x, y, lift = 0) {
+  const k = Math.sqrt(Math.max(0.02, 1 - (x / 0.8) ** 2 - ((y - 0.3) / 0.72) ** 2));
+  return { z: 0.74 * k + lift, ry: x * 1.05, rx: -(y - 0.3) * 0.95 };
+}
+// 큼직한 눈: 0 또랑또랑, 1 웃는 눈, 2 졸린 눈
+function eyes(P, style, ex = 0.3, ey = 0.36) {
+  for (const s of [-1, 1]) {
+    const h = onHead(s * ex, ey, 0.005);
+    if (style === 1) {
+      P.dark.push(place(new THREE.TorusGeometry(0.105, 0.03, 6, 14, Math.PI), s * ex, ey - 0.04, h.z + 0.01, h.rx, h.ry, 0));
+    } else if (style === 2) {
+      P.dark.push(ell(0.125, 0.03, 0.03, s * ex, ey, h.z, h.rx, h.ry, s * 0.12, 12));
+    } else {
+      P.dark.push(ell(0.125, 0.165, 0.045, s * ex, ey, h.z, h.rx, h.ry, 0, 18));
+      P.white.push(ell(0.048, 0.055, 0.02, s * ex + 0.04, ey + 0.065, h.z + 0.04, h.rx, h.ry, 0, 10));
+      P.white.push(ell(0.022, 0.025, 0.012, s * ex - 0.045, ey - 0.06, h.z + 0.038, h.rx, h.ry, 0, 8));
+    }
+    const b = onHead(s * 0.52, 0.16, 0.0);
+    P.felt.push(tint(ell(0.12, 0.075, 0.02, s * 0.52, 0.16, b.z, b.rx, b.ry, 0, 14), 0xff8fa6));
+  }
+}
+// 입: 0 ω, 1 활짝, 2 오
+function mouth(P, style, y, z) {
+  if (style === 1) {
+    P.felt.push(tint(place(new THREE.CircleGeometry(0.115, 18, Math.PI, Math.PI), 0, y + 0.03, z + 0.012), 0x8a2f45));
+    P.felt.push(tint(ell(0.06, 0.035, 0.012, 0, y - 0.05, z + 0.018, 0, 0, 0, 10), 0xff8f9f));
+  } else if (style === 2) {
+    P.dark.push(ell(0.045, 0.055, 0.02, 0, y - 0.01, z + 0.005, 0, 0, 0, 12));
+  } else {
+    for (const k of [-1, 1]) P.dark.push(place(new THREE.TorusGeometry(0.062, 0.017, 6, 14, Math.PI), k * 0.062, y, z, 0, 0, Math.PI));
+  }
+}
+
+const ACC = [0xff5d6c, 0xffc93a, 0x4fb8ff, 0x7be0a8, 0xb48cff, 0xff8fc8, 0xffffff];
+function accessory(P, type, color) {
+  const r = rnd();
+  let c = ACC[Math.floor(rnd() * ACC.length)];
+  if (new THREE.Color(c).getHex() === new THREE.Color(color).getHex()) c = 0xffffff;
+  if (r < 0.28) return;
+  if (r < 0.5) {                                    // 목도리
+    P.felt.push(tint(place(new THREE.TorusGeometry(0.47, 0.1, 10, 28), 0, -0.1, 0.02, Math.PI / 2, 0, 0, 1, 1, 1.15), c));
+    P.felt.push(tint(place(new THREE.BoxGeometry(0.17, 0.36, 0.07), 0.3, -0.3, 0.44, 0.2, 0, -0.25), c));
+  } else if (r < 0.68) {                            // 리본
+    for (const s of [-1, 1]) P.felt.push(tint(place(new THREE.ConeGeometry(0.15, 0.3, 12), 0.36 + s * 0.15, 0.93, 0.3, 0, 0, s * Math.PI / 2 + 0.3, 1, 1, 0.6), c));
+    P.felt.push(tint(ell(0.07, 0.07, 0.06, 0.36, 0.93, 0.32, 0, 0, 0, 10), c));
+  } else if (r < 0.84 && type !== 'bunny') {        // 고깔모자
+    P.felt.push(tint(place(new THREE.ConeGeometry(0.24, 0.5, 18), -0.12, 1.2, 0.05, 0, 0, 0.22), c));
+    P.felt.push(tint(ell(0.08, 0.08, 0.08, -0.175, 1.45, 0.05, 0, 0, 0, 10), 0xffffff));
+    P.felt.push(tint(place(new THREE.TorusGeometry(0.235, 0.035, 8, 20), -0.065, 0.96, 0.05, Math.PI / 2, 0.22, 0), 0xffffff));
+  } else {                                          // 꽃
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      P.felt.push(tint(ell(0.08, 0.08, 0.04, -0.42 + Math.cos(a) * 0.1, 0.9 + Math.sin(a) * 0.1, 0.36, 0, -0.4, 0, 10), c));
+    }
+    P.felt.push(tint(ell(0.06, 0.06, 0.05, -0.42, 0.9, 0.39, 0, -0.4, 0, 10), 0xffd84a));
+  }
+}
 
 // ---------- 동료 인형 ----------
 export function makeDoll(type, color, r) {
-  const P = { main: [], light: [], bead: [], felt: [] };
-  // 몸: 큰 머리 + 작은 몸통 + 짧은 팔다리
-  P.main.push(ell(0.78, 0.7, 0.72, 0, 0.3, 0, 0, 0, 0, 36));
-  P.main.push(ell(0.56, 0.52, 0.5, 0, -0.45, 0));
+  const P = { main: [], light: [], dark: [], white: [], felt: [] };
+  // 큰 머리 + 통통한 몸 + 짧은 팔다리
+  P.main.push(ell(0.8, 0.72, 0.74, 0, 0.3, 0, 0, 0, 0, 36));
+  P.main.push(ell(0.58, 0.52, 0.52, 0, -0.45, 0));
   for (const s of [-1, 1]) {
-    P.main.push(ell(0.17, 0.27, 0.17, s * 0.56, -0.32, 0.1, 0, 0, s * 0.55, 18));
-    P.light.push(ell(0.2, 0.15, 0.27, s * 0.27, -0.88, 0.2, 0, 0, 0, 18));
-    P.felt.push(blush(s * 0.5, 0.17, 0.57, s * 0.7));
+    P.main.push(ell(0.18, 0.28, 0.18, s * 0.58, -0.3, 0.1, 0, 0, s * 0.6, 18));
+    P.light.push(ell(0.21, 0.15, 0.28, s * 0.28, -0.88, 0.2, 0, 0, 0, 18));
   }
-  P.light.push(ell(0.36, 0.34, 0.14, 0, -0.47, 0.4, 0, 0, 0, 20));
-  let eyeZ = 0.67, eyeY = 0.36, eyeX = 0.27;
+  P.light.push(ell(0.38, 0.35, 0.14, 0, -0.47, 0.42, 0, 0, 0, 20));
+  let eyeStyle = Math.floor(rnd() * 3.4) % 3, mouthStyle = Math.floor(rnd() * 3);
+  let mouthY = 0.15, mouthZ = onHead(0, 0.15).z + 0.005, lightHex = lighter(color, 0.65);
 
   if (type === 'bear') {
     for (const s of [-1, 1]) {
-      P.main.push(ell(0.25, 0.25, 0.14, s * 0.56, 0.88, 0, 0, 0, 0, 18));
-      P.light.push(ell(0.14, 0.14, 0.06, s * 0.56, 0.88, 0.1, 0, 0, 0, 14));
+      P.main.push(ell(0.26, 0.26, 0.14, s * 0.58, 0.9, 0, 0, 0, 0, 18));
+      P.light.push(ell(0.15, 0.15, 0.06, s * 0.58, 0.9, 0.1, 0, 0, 0, 14));
     }
-    P.light.push(ell(0.25, 0.19, 0.15, 0, 0.15, 0.64, 0, 0, 0, 20));
-    P.felt.push(tint(ell(0.08, 0.058, 0.05, 0, 0.22, 0.78, 0, 0, 0, 12), 0x3a2426), ...mouth(0.13, 0.775, 0.9));
+    P.light.push(ell(0.27, 0.2, 0.15, 0, 0.13, 0.65, 0, 0, 0, 20));
+    P.dark.push(ell(0.085, 0.06, 0.05, 0, 0.21, 0.79, 0, 0, 0, 12));
+    mouthY = 0.1; mouthZ = 0.795; if (mouthStyle === 1) mouthStyle = 0;
   } else if (type === 'bunny') {
-    for (const s of [-1, 1]) {
-      P.main.push(ell(0.15, 0.5, 0.11, s * 0.27, 1.22, -0.02, 0, 0, -s * 0.16, 20));
-      P.light.push(ell(0.08, 0.38, 0.04, s * 0.27, 1.22, 0.06, 0, 0, -s * 0.16, 14));
+    const flop = rnd() < 0.5;
+    P.main.push(ell(0.16, 0.52, 0.11, -0.28, 1.24, -0.02, 0, 0, 0.16, 20));
+    P.light.push(ell(0.085, 0.4, 0.04, -0.28, 1.24, 0.065, 0, 0, 0.16, 14));
+    if (flop) {
+      P.main.push(ell(0.16, 0.3, 0.11, 0.3, 1.05, -0.02, 0, 0, -0.3, 20), ell(0.16, 0.3, 0.11, 0.56, 1.1, 0.02, 0, 0, -1.9, 20));
+    } else {
+      P.main.push(ell(0.16, 0.52, 0.11, 0.28, 1.24, -0.02, 0, 0, -0.16, 20));
+      P.light.push(ell(0.085, 0.4, 0.04, 0.28, 1.24, 0.065, 0, 0, -0.16, 14));
     }
-    P.felt.push(tint(ell(0.05, 0.035, 0.03, 0, 0.24, 0.715, 0, 0, 0, 10), 0xe86a8a), ...mouth(0.17, 0.7, 0.85));
-    P.main.push(ell(0.16, 0.16, 0.16, 0, -0.62, -0.5, 0, 0, 0, 14));
+    P.felt.push(tint(ell(0.055, 0.04, 0.03, 0, 0.245, onHead(0, 0.245).z, 0, 0, 0, 10), 0xff6f93));
+    P.main.push(ell(0.17, 0.17, 0.17, 0, -0.62, -0.5, 0, 0, 0, 14));
   } else if (type === 'cat') {
     for (const s of [-1, 1]) {
-      P.main.push(place(new THREE.ConeGeometry(0.27, 0.44, 20), s * 0.46, 0.9, 0, 0, 0, -s * 0.36));
-      P.light.push(place(new THREE.ConeGeometry(0.15, 0.26, 14), s * 0.455, 0.87, 0.09, 0, 0, -s * 0.36));
+      P.main.push(place(new THREE.ConeGeometry(0.28, 0.46, 20), s * 0.47, 0.92, 0, 0, 0, -s * 0.36));
+      P.light.push(place(new THREE.ConeGeometry(0.16, 0.27, 14), s * 0.465, 0.89, 0.09, 0, 0, -s * 0.36));
+      for (const k of [0, 1]) P.dark.push(ell(0.13, 0.012, 0.012, s * 0.66, 0.2 - k * 0.09, 0.42, 0, s * 0.75, s * (0.12 - k * 0.24), 8));   // 수염
     }
-    P.light.push(ell(0.2, 0.14, 0.1, 0, 0.17, 0.66, 0, 0, 0, 16));
-    P.felt.push(tint(ell(0.05, 0.035, 0.03, 0, 0.23, 0.75, 0, 0, 0, 10), 0xe86a8a), ...mouth(0.16, 0.745, 0.85));
-    P.main.push(ell(0.1, 0.1, 0.42, 0.22, -0.72, -0.6, 0.5, 0.5, 0, 14));
+    P.felt.push(tint(ell(0.055, 0.04, 0.03, 0, 0.24, onHead(0, 0.24).z, 0, 0, 0, 10), 0xff6f93));
+    P.main.push(ell(0.1, 0.1, 0.44, 0.24, -0.72, -0.6, 0.5, 0.5, 0, 14));
+    lightHex = 0xffffff;
   } else if (type === 'chick') {
-    P.felt.push(tint(place(new THREE.ConeGeometry(0.11, 0.2, 14), 0, 0.2, 0.76, Math.PI / 2, 0, 0), 0xff9a3c));
-    P.main.push(ell(0.07, 0.16, 0.07, 0, 1.02, 0, 0, 0, 0.4, 12), ell(0.06, 0.13, 0.06, 0.08, 1.0, 0, 0, 0, -0.5, 12));
-    eyeY = 0.38;
+    P.felt.push(tint(place(new THREE.ConeGeometry(0.12, 0.22, 14), 0, 0.2, 0.78, Math.PI / 2, 0, 0), 0xff8a2a));
+    P.main.push(ell(0.07, 0.17, 0.07, 0, 1.04, 0, 0, 0, 0.4, 12), ell(0.06, 0.14, 0.06, 0.09, 1.02, 0, 0, 0, -0.5, 12));
+    for (const s of [-1, 1]) P.felt.push(tint(ell(0.2, 0.09, 0.26, s * 0.3, -0.92, 0.26, 0, s * 0.3, 0, 12), 0xff8a2a));
+    mouthStyle = -1; eyeStyle = eyeStyle === 2 ? 0 : eyeStyle;
   } else if (type === 'frog') {
     for (const s of [-1, 1]) {
-      P.main.push(ell(0.27, 0.27, 0.25, s * 0.35, 0.86, 0.18, 0, 0, 0, 20));
-      P.light.push(ell(0.17, 0.17, 0.1, s * 0.35, 0.88, 0.37, 0, 0, 0, 16));
+      P.main.push(ell(0.28, 0.28, 0.26, s * 0.36, 0.88, 0.16, 0, 0, 0, 20));
+      P.white.push(ell(0.19, 0.19, 0.1, s * 0.36, 0.9, 0.36, 0, 0, 0, 16));
+      P.dark.push(ell(0.09, 0.11, 0.04, s * 0.36, 0.9, 0.455, 0, 0, 0, 12));
+      const b = onHead(s * 0.52, 0.2);
+      P.felt.push(tint(ell(0.12, 0.075, 0.02, s * 0.52, 0.2, b.z, b.rx, b.ry, 0, 14), 0xff8fa6));
     }
-    P.felt.push(tint(place(new THREE.TorusGeometry(0.3, 0.016, 6, 22, Math.PI * 0.8), 0, 0.42, 0.6, -0.35, 0, Math.PI * 1.1), 0x3a2f2a));
-    eyeY = 0.88; eyeZ = 0.455; eyeX = 0.35;
+    P.dark.push(place(new THREE.TorusGeometry(0.32, 0.02, 6, 22, Math.PI * 0.7), 0, 0.52, 0.6, -0.3, 0, Math.PI * 1.15));
+    mouthStyle = -1; eyeStyle = -1; lightHex = 0xfffbe0;
   }
-  for (const s of [-1, 1]) P.bead.push(ell(0.082, 0.09, 0.06, s * eyeX, eyeY, eyeZ, 0, 0, 0, 16));
+  if (eyeStyle >= 0) eyes(P, eyeStyle);
+  if (mouthStyle >= 0) mouth(P, mouthStyle, mouthY, mouthZ);
+  accessory(P, type, color);
 
   const g = new THREE.Group();
-  const kind = WEAVE[type];
-  const mats = {
-    main: fabric(kind, color),
-    light: fabric(kind, type === 'frog' ? 0xfaf6e8 : lighter(color, 0.62)),
-    bead, felt,
-  };
-  finish(g, P, mats);
+  finish(g, P, { main: toon(color), light: toon(lightHex), dark: bead, white, felt });
   g.scale.setScalar(r);
   return g;
 }
 
 // ---------- 주인공: 한정판 햄스터 (앞이 +z, 엎드린 찹쌀떡 모양) ----------
 export function makeHamster(r) {
-  const GOLD = 0xe8a24c, CREAM = 0xfff1da;
-  const P = { main: [], light: [], dark: [], bead: [], felt: [] };
+  const ORANGE = 0xff9a2e, CREAM = 0xfff6e6;
+  const P = { main: [], light: [], dark: [], white: [], felt: [] };
   P.main.push(ell(0.86, 0.74, 1.0, 0, 0, 0, 0, 0, 0, 48));
-  P.dark.push(ell(0.3, 0.2, 0.78, 0, 0.56, -0.12, 0, 0, 0, 24));               // 등줄무늬
-  P.light.push(ell(0.845, 0.56, 0.975, 0, -0.215, 0.03, 0, 0, 0, 40));        // 배
+  P.light.push(ell(0.848, 0.56, 0.978, 0, -0.215, 0.03, 0, 0, 0, 40));         // 배
+  P.light.push(ell(0.36, 0.3, 0.2, 0, 0.36, 0.72, 0, 0, 0, 20));               // 이마 흰 무늬
   for (const s of [-1, 1]) {
-    P.light.push(ell(0.33, 0.27, 0.26, s * 0.4, -0.13, 0.72, 0, 0, 0, 22));    // 볼주머니
-    P.main.push(ell(0.18, 0.18, 0.07, s * 0.43, 0.66, 0.4, -0.25, s * 0.25, 0, 18));
-    P.felt.push(tint(ell(0.105, 0.105, 0.03, s * 0.44, 0.66, 0.455, -0.25, s * 0.25, 0, 14), 0xf7a3a8));
-    P.felt.push(tint(ell(0.12, 0.075, 0.17, s * 0.3, -0.72, 0.72, 0, s * 0.3, 0, 14), 0xf9b7ae));   // 앞발
-    P.felt.push(tint(ell(0.14, 0.08, 0.2, s * 0.5, -0.73, -0.45, 0, -s * 0.4, 0, 14), 0xf9b7ae));   // 뒷발
-    P.felt.push(blush(s * 0.56, -0.02, 0.69, s * 0.75));
-    P.bead.push(ell(0.092, 0.1, 0.06, s * 0.33, 0.2, 0.845, 0, 0, 0, 18));
+    P.light.push(ell(0.34, 0.28, 0.27, s * 0.4, -0.13, 0.72, 0, 0, 0, 22));    // 볼주머니
+    P.felt.push(tint(ell(0.13, 0.08, 0.18, s * 0.3, -0.72, 0.74, 0, s * 0.3, 0, 14), 0xffb3a6));
+    P.felt.push(tint(ell(0.15, 0.085, 0.21, s * 0.5, -0.73, -0.45, 0, -s * 0.4, 0, 14), 0xffb3a6));
+    P.felt.push(tint(ell(0.13, 0.08, 0.02, s * 0.58, -0.04, 0.685, 0, s * 0.8, 0, 14), 0xff7f96));
   }
-  P.light.push(ell(0.25, 0.19, 0.18, 0, -0.07, 0.9, 0, 0, 0, 20));              // 주둥이
-  P.felt.push(tint(ell(0.06, 0.045, 0.04, 0, 0.0, 1.07, 0, 0, 0, 10), 0xe9758f), ...mouth(-0.075, 1.065, 0.8));
-  P.light.push(ell(0.11, 0.11, 0.11, 0, -0.32, -1.0, 0, 0, 0, 14));             // 꼬리
-  // 한정판 금별
-  const star = new THREE.Shape();
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2 + Math.PI / 2, rr = i % 2 ? 0.075 : 0.17;
-    i ? star.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : star.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
-  }
-  const sg = new THREE.ExtrudeGeometry(star, { depth: 0.05, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.012, bevelSegments: 2 });
-  const starMesh = new THREE.Mesh(sg, new THREE.MeshPhysicalMaterial({ color: 0xffc94a, metalness: 0.7, roughness: 0.3, clearcoat: 0.5 }));
-  starMesh.position.set(-0.48, 0.78, 0.46);
-  starMesh.rotation.set(-0.25, -0.35, 0.25);
-  starMesh.castShadow = true;
+  P.light.push(ell(0.26, 0.2, 0.18, 0, -0.07, 0.9, 0, 0, 0, 20));
+  P.felt.push(tint(ell(0.065, 0.05, 0.04, 0, 0.005, 1.07, 0, 0, 0, 10), 0xff6f8f));
+  for (const k of [-1, 1]) P.dark.push(place(new THREE.TorusGeometry(0.055, 0.016, 6, 14, Math.PI), k * 0.055, -0.075, 1.068, 0, 0, Math.PI));
+  P.dark.push(ell(0.3, 0.2, 0.78, 0, 0.565, -0.12, 0, 0, 0, 24));
+  const stripe = P.dark.pop();                                                   // 등줄무늬는 따로 색을 준다
 
   const body = new THREE.Group();
-  const mats = { main: fabric('teddy', GOLD, { repeat: [6, 4], bump: 1.6 }), light: fabric('teddy', CREAM, { repeat: [6, 4], bump: 1.6 }),
-    dark: fabric('teddy', 0xb26a2c, { repeat: [3, 3], bump: 1.6 }), bead, felt };
-  finish(body, P, mats);
-  body.add(starMesh);
-  // 빨간 목도리와 리본, 작은 금관: 멀리서도 '저게 나'
-  const red = fabric('fleece', 0xe2323f, { repeat: [8, 1] });
-  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.775, 0.1, 12, 40), red);
+  finish(body, P, { main: toon(ORANGE), light: toon(CREAM), dark: bead, white, felt });
+  const st = new THREE.Mesh(stripe, toon(0xd9701a));
+  st.castShadow = true;
+  body.add(st);
+  // 흰 테두리: 더미 속에서도 '저게 나'
+  const hull = new THREE.Mesh(body.userData.main.geometry, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide }));
+  hull.scale.setScalar(1.055);
+  hull.userData.outline = true;
+  body.add(hull);
+
+  // 눈: 평소(또랑또랑) / 긴장(동그랗게 뜬 눈)
+  const eyeN = new THREE.Group(), eyeW = new THREE.Group();
+  for (const s of [-1, 1]) {
+    const d = new THREE.Mesh(ell(0.115, 0.15, 0.05, s * 0.34, 0.2, 0.85, -0.15, s * 0.36, 0, 18), bead);
+    const h1 = new THREE.Mesh(ell(0.045, 0.05, 0.02, s * 0.34 + 0.04, 0.26, 0.9, 0, s * 0.36, 0, 10), white);
+    const h2 = new THREE.Mesh(ell(0.02, 0.022, 0.012, s * 0.34 - 0.04, 0.14, 0.895, 0, s * 0.36, 0, 8), white);
+    eyeN.add(d, h1, h2);
+    const w = new THREE.Mesh(ell(0.15, 0.18, 0.05, s * 0.34, 0.22, 0.85, -0.15, s * 0.36, 0, 18), white);
+    const p = new THREE.Mesh(ell(0.055, 0.065, 0.02, s * 0.33, 0.21, 0.9, -0.15, s * 0.36, 0, 10), bead);
+    eyeW.add(w, p);
+  }
+  eyeW.visible = false;
+  const sweat = new THREE.Mesh(mergeGeometries([ell(0.09, 0.09, 0.09, 0, 0, 0, 0, 0, 0, 10), place(new THREE.ConeGeometry(0.083, 0.17, 10), 0, 0.11, 0).toNonIndexed()].map((g) => (g.index ? g.toNonIndexed() : g))),
+    new THREE.MeshBasicMaterial({ color: 0x8fd6ff }));
+  sweat.position.set(0.62, 0.52, 0.5);
+  sweat.visible = false;
+  body.add(eyeN, eyeW, sweat);
+
+  // 귀와 꼬리: 기어갈 때 흔들린다
+  const ears = [];
+  for (const s of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(s * 0.42, 0.56, 0.4);
+    const ear = new THREE.Mesh(ell(0.2, 0.2, 0.08, 0, 0.13, 0, -0.25, s * 0.25, 0, 18), toon(ORANGE));
+    const inner = new THREE.Mesh(ell(0.115, 0.115, 0.03, 0, 0.13, 0.06, -0.25, s * 0.25, 0, 14), toon(0xffa3b0));
+    ear.castShadow = true;
+    pivot.add(ear, inner);
+    body.add(pivot);
+    ears.push(pivot);
+  }
+  const tail = new THREE.Mesh(ell(0.12, 0.12, 0.12, 0, 0, -0.06, 0, 0, 0, 14), toon(CREAM));
+  tail.position.set(0, -0.3, -0.96);
+  body.add(tail);
+
+  // 빨간 목도리와 리본, 금관, 꼬리표
+  const red = toon(0xff3b4e);
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.775, 0.105, 12, 40), red);
   scarf.scale.set(1.0, 0.855, 1.3);
   scarf.position.set(0, 0, 0.36);
-  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), red);
+  scarf.castShadow = true;
+  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), red);
   knot.position.set(0, 0.72, 0.3);
   body.add(scarf, knot);
   for (const s of [-1, 1]) {
-    const wing = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.34, 12), red);
-    wing.position.set(s * 0.2, 0.75, 0.3); wing.rotation.z = s * Math.PI / 2; wing.scale.z = 0.6;
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.42, 0.05), red);
-    tail.position.set(s * 0.1, 0.62, 0.12); tail.rotation.set(-1.1, 0, s * 0.3);
-    wing.castShadow = tail.castShadow = true;
-    body.add(wing, tail);
+    const wing = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.36, 12), red);
+    wing.position.set(s * 0.21, 0.76, 0.3); wing.rotation.z = s * Math.PI / 2; wing.scale.z = 0.6;
+    const end = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.44, 0.06), red);
+    end.position.set(s * 0.1, 0.62, 0.1); end.rotation.set(-1.1, 0, s * 0.3);
+    wing.castShadow = end.castShadow = true;
+    body.add(wing, end);
   }
-  const gold = new THREE.MeshPhysicalMaterial({ color: 0xffc83a, metalness: 0.85, roughness: 0.22, emissive: 0x6a4200, side: THREE.DoubleSide });
+  const gold = toon(0xffcf3a, { side: THREE.DoubleSide });
   const crown = new THREE.Group();
-  crown.add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.18, 0.1, 20, 1, true), gold));
+  crown.add(new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.19, 0.11, 20, 1, true), gold));
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2;
-    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 8), gold);
-    sp.position.set(Math.cos(a) * 0.17, 0.12, Math.sin(a) * 0.17);
-    crown.add(sp);
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.17, 8), gold);
+    sp.position.set(Math.cos(a) * 0.18, 0.13, Math.sin(a) * 0.18);
+    const gem = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff4f7a }));
+    gem.position.set(Math.cos(a) * 0.18, 0.23, Math.sin(a) * 0.18);
+    crown.add(sp, gem);
   }
-  crown.position.set(0, 0.76, 0.62); crown.rotation.x = 0.45;
+  crown.position.set(0, 0.78, 0.6); crown.rotation.x = 0.42;
   crown.traverse((o) => { o.castShadow = true; });
   body.add(crown);
-  // 등 뒤 꼬리표
   const tagTex = canvasTex(256, 160, (g, w, h) => {
     roundRect(g, 6, 6, w - 12, h - 12, 22); g.fillStyle = '#fffaf0'; g.fill();
-    g.strokeStyle = '#f0a65a'; g.lineWidth = 8; g.stroke();
-    g.fillStyle = '#d9602f'; g.font = `900 56px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.strokeStyle = '#ff8a3a'; g.lineWidth = 8; g.stroke();
+    g.fillStyle = '#e8452f'; g.font = `900 56px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText('한정판', w / 2, h / 2 - 16);
     g.fillStyle = '#9a8676'; g.font = `800 26px ${FONT}`; g.fillText('No.001', w / 2, h / 2 + 38);
   });
-  const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.31), new THREE.MeshStandardMaterial({ map: tagTex, side: THREE.DoubleSide, roughness: 0.8 }));
-  tag.position.set(0.5, 0.2, -0.86);
+  const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.325), new THREE.MeshBasicMaterial({ map: tagTex, side: THREE.DoubleSide }));
+  tag.position.set(0.5, 0.2, -0.87);
   tag.rotation.set(0.2, Math.PI - 0.5, 0.25);
   body.add(tag);
 
-
   const g = new THREE.Group();
   g.add(body);
-  g.userData.body = body;
+  g.userData = { body, ears, tail,
+    setMood(nervous) { eyeN.visible = !nervous; eyeW.visible = nervous; sweat.visible = nervous; } };
   g.scale.setScalar(r);
   return g;
 }

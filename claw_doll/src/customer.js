@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { clamp, damp } from './util.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { fabric } from './materials.js';
+import { fabric, toon } from './materials.js';
 import handL from '../assets/hand_left.glb';
 import handR from '../assets/hand_right.glb';
 
@@ -27,8 +27,8 @@ export function makeCustomer(scene) {
   g.position.copy(FACE_HOME);
   scene.add(g);
 
-  const skin = new THREE.MeshPhysicalMaterial({ color: 0xf0c3a2, roughness: 0.58, sheen: 0.5, sheenColor: 0xff8a66, sheenRoughness: 0.6 });
-  const hairMat = new THREE.MeshPhysicalMaterial({ color: 0x241719, roughness: 0.42, sheen: 0.6, sheenColor: 0x6a4a52, sheenRoughness: 0.4 });
+  const skin = toon(0xffcfa8);
+  const hairMat = toon(0x5a3628);
   const head = new THREE.Mesh(new THREE.SphereGeometry(R, 64, 48), skin);
   head.scale.set(1, SY, SZ);
   g.add(head);
@@ -59,8 +59,8 @@ export function makeCustomer(scene) {
 
   // 눈
   const face = { eyes: [], pupils: [], lids: [], brows: [], blush: [] };
-  const white = new THREE.MeshPhysicalMaterial({ color: 0xfffaf4, roughness: 0.15, clearcoat: 1 });
-  const iris = new THREE.MeshPhysicalMaterial({ color: 0x4a2c1c, roughness: 0.2, clearcoat: 1 });
+  const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const iris = new THREE.MeshBasicMaterial({ color: 0x7a4a26 });
   const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0a0607 });
   const shine = new THREE.MeshBasicMaterial({ color: 0xffffff });
   for (const s of [-1, 1]) {
@@ -96,7 +96,7 @@ export function makeCustomer(scene) {
     face.brows.push(bw);
 
     const bl = new THREE.Mesh(new THREE.CircleGeometry(0.95, 28),
-      new THREE.MeshBasicMaterial({ color: 0xff7f8f, transparent: true, opacity: 0.4, depthWrite: false }));
+      new THREE.MeshBasicMaterial({ color: 0xff7f8f, transparent: true, opacity: 0.5, depthWrite: false }));
     bl.position.set(s * 3.0, -1.0, surf(s * 3.0, -1.0, 0.06));
     bl.rotation.y = Math.PI - s * 0.55;
     bl.scale.y = 0.65;
@@ -104,7 +104,7 @@ export function makeCustomer(scene) {
     face.blush.push(bl);
   }
   const nose = new THREE.Mesh(new THREE.SphereGeometry(0.5, 18, 14),
-    new THREE.MeshPhysicalMaterial({ color: 0xeab092, roughness: 0.5, sheen: 0.5, sheenColor: 0xff7755 }));
+    toon(0xffb48e));
   nose.scale.set(1.05, 0.8, 0.85);
   nose.position.set(0, -0.6, surf(0, -0.6, 0.02));
   g.add(nose);
@@ -117,7 +117,7 @@ export function makeCustomer(scene) {
   g.add(face.mouth, face.tongue);
 
   face.sweat = new THREE.Group();
-  const dropMat = new THREE.MeshPhysicalMaterial({ color: 0x9fd8ff, roughness: 0.05, clearcoat: 1, emissive: 0x2a5f88 });
+  const dropMat = new THREE.MeshBasicMaterial({ color: 0x8fd6ff });
   const drop = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), dropMat);
   const dropTop = new THREE.Mesh(new THREE.ConeGeometry(0.39, 0.75, 16), dropMat);
   dropTop.position.y = 0.5;
@@ -126,7 +126,7 @@ export function makeCustomer(scene) {
   g.add(face.sweat);
 
   // 후드티
-  const hood = fabric('fleece', 0x4f86c6, { repeat: [10, 6] });
+  const hood = toon(0x4f9be8);
   const torso = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 28), hood);
   torso.scale.set(9, 5.2, 4.6);
   torso.position.set(0, -9.2, 1.6);

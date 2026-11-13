@@ -1,13 +1,11 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import hdrBytes from '../assets/warm_bar_1k.hdr';
 import { clamp, lerp, damp, rand, rnd, canvasTex } from './util.js';
 import { makeDoll, makeHamster } from './dolls.js';
 import { makeCustomer, FACE_HOME } from './customer.js';
@@ -24,54 +22,37 @@ async function main() {
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.95;
+  renderer.toneMapping = THREE.NoToneMapping;
   $('app').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 300);
+  const camera = new THREE.PerspectiveCamera(63, innerWidth / innerHeight, 0.1, 300);
 
-  // 밤 실내 HDRI: 반사와 유리 밖 배경(흐리게)
-  {
-    const d = new RGBELoader().parse(hdrBytes.buffer.slice(hdrBytes.byteOffset, hdrBytes.byteOffset + hdrBytes.byteLength));
-    const tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type);
-    tex.mapping = THREE.EquirectangularReflectionMapping;
-    tex.minFilter = tex.magFilter = THREE.LinearFilter;
-    tex.flipY = true;
-    tex.needsUpdate = true;
-    const pm = new THREE.PMREMGenerator(renderer);
-    const env = pm.fromEquirectangular(tex).texture;
-    scene.environment = env;
-    scene.background = env;
-    scene.backgroundBlurriness = 0.55;
-    scene.backgroundIntensity = 0.035;
-    scene.environmentIntensity = 0.4;
-    scene.backgroundRotation.y = scene.environmentRotation.y = 1.2;
-  }
+  scene.background = new THREE.Color(0x2a2748);
 
   // ================= 조명: 기계 안은 따뜻하고 밝게 =================
-  const top = new THREE.DirectionalLight(0xfff0dc, 2.3);
+  const top = new THREE.DirectionalLight(0xfff6e8, 1.85);
   top.position.set(1.2, 22, -2.2);
   top.castShadow = true;
   top.shadow.mapSize.set(2048, 2048);
   Object.assign(top.shadow.camera, { left: -7.5, right: 7.5, top: 7.5, bottom: -7.5, near: 4, far: 40 });
   top.shadow.bias = -0.0004;
   top.shadow.normalBias = 0.045;
-  top.shadow.radius = 4;
+  top.shadow.radius = 1.6;
   scene.add(top, top.target);
-  scene.add(new THREE.HemisphereLight(0xffe6cc, 0x7a5a9a, 0.22));
-  const lamp = new THREE.PointLight(0xffd6a4, 40, 26, 1.6);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xb9a4ff, 1.2));
+  const lamp = new THREE.PointLight(0xffe6c0, 2.5, 26, 1.6);
   lamp.position.set(0, 11.5, 0);
   scene.add(lamp);
   // 손님 얼굴: 기계 불빛을 아래에서 받고, 뒤에서는 네온이 테두리를 잡는다
-  const faceLight = new THREE.SpotLight(0xffe6cc, 62, 40, 0.9, 0.7, 1.5);
+  const faceLight = new THREE.SpotLight(0xfff0dc, 5, 40, 0.9, 0.7, 1.5);
   faceLight.position.set(0, 1.0, 6.4);
   faceLight.target.position.copy(FACE_HOME);
   scene.add(faceLight, faceLight.target);
   // 통로 천장등: 매장은 어둑하고 차가운 흰빛
-  const rimA = new THREE.PointLight(0xdfe8ff, 520, 80, 1.5);
+  const rimA = new THREE.PointLight(0xf0f4ff, 30, 90, 1.4);
   rimA.position.set(-14, 22, 20);
-  const rimB = new THREE.PointLight(0xdfe8ff, 520, 80, 1.5);
+  const rimB = new THREE.PointLight(0xf0f4ff, 30, 90, 1.4);
   rimB.position.set(14, 22, 20);
   scene.add(rimA, rimB);
 
@@ -91,8 +72,8 @@ async function main() {
   wall(0.08, 0.75, 1.5, -3, 0.75, 4.5); wall(1.5, 0.75, 0.08, -4.5, 0.75, 3);
 
   const COLORS = {
-    bear: [0xc98a55, 0xe6c79a, 0x9c6a48, 0xf2dcc0], bunny: [0xf29ab5, 0xfff0ea, 0xc7a8f0, 0xffc2a8],
-    cat: [0x9fb0c8, 0xf3e6d2, 0x6f7f9c, 0xf2b98a], chick: [0xf6cf52, 0xffe38a], frog: [0x8fc56a, 0x6fb88c],
+    bear: [0xb9764a, 0xf2c98a, 0x8f5a3c, 0xff9fb0], bunny: [0xff8fb5, 0xfffaf2, 0xb79aff, 0x8fd2ff],
+    cat: [0x8fa2c8, 0xfff3de, 0x5a6890, 0xc9a2f0, 0x4a4660], chick: [0xffd43a, 0xffe670], frog: [0x7fd65a, 0x4fc79a],
   };
   const TYPES = ['bear', 'bunny', 'cat', 'chick', 'frog', 'bear', 'bunny', 'cat'];
   const dolls = [];
@@ -124,7 +105,7 @@ async function main() {
   const ham = makeHamster(0.92);
   scene.add(ham);
   const pBody = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0.5, 9, -1.2).lockRotations().setLinearDamping(1.2));
-  const pCol = world.createCollider(RAPIER.ColliderDesc.ball(PR).setFriction(1.0).setRestitution(0).setDensity(1.4), pBody);
+  const pCol = world.createCollider(RAPIER.ColliderDesc.ball(PR).setFriction(0).setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min).setRestitution(0).setDensity(1.4), pBody);
   for (let i = 0; i < 90; i++) world.step();
 
   // '이게 나': 머리 위 표시와 따라다니는 작은 조명
@@ -138,7 +119,7 @@ async function main() {
   marker.scale.setScalar(0.62);
   marker.renderOrder = 20;
   scene.add(marker);
-  const hamLight = new THREE.PointLight(0xfff2d8, 9, 5, 1.6);
+  const hamLight = new THREE.PointLight(0xfff2d8, 1.2, 5, 1.6);
   scene.add(hamLight);
 
   // ================= 입력 =================
@@ -186,8 +167,18 @@ async function main() {
       const push = P.phase < 0.55 ? Math.sin((P.phase / 0.55) * Math.PI) : 0;
       const speed = (0.4 + 2.9 * push) * (burrowing ? 0.55 : 1);
       // 밀었는데도 못 나갔으면(앞이 막힘) 몸을 들어 타고 넘는다
-      const got = vx * ix + vz * iz;
-      if (push > 0.3 && !burrowing && got < speed * 0.5) vy = Math.max(vy, 4.6);
+      // 가는 쪽 더미가 나보다 높으면 그 높이만큼 몸을 끌어올려 타고 넘는다
+      if (!burrowing) {
+        const fx = pos.x + ix * 0.85, fz = pos.z + iz * 0.85;
+        let topY = 0;
+        for (const d of dolls) {
+          const q = d.body.translation();
+          const h = Math.hypot(q.x - fx, q.z - fz), rr = d.r * 0.85;
+          if (h < rr) topY = Math.max(topY, q.y + Math.sqrt(rr * rr - h * h));
+        }
+        const need = topY + PR * 0.9 - pos.y;
+        if (need > 0.05) vy = Math.max(vy, Math.min(6.5, need * 8) * (0.35 + 0.65 * push));
+      }
       vx = lerp(vx, ix * speed, 0.3); vz = lerp(vz, iz * speed, 0.3);
       P.squash = damp(P.squash, push, 14, dt);
     } else {
@@ -222,6 +213,11 @@ async function main() {
 
   // ================= 집게 (이 단계에서는 돌아다니며 그림자만) =================
   const C = { x: CHUTE.cx, y: 11.0, z: CHUTE.cz, open: 0.4, state: 'wait', t: 2, tx: 0, tz: 0, floor: 3 };
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.92, 1.2, 8, 1), new THREE.MeshBasicMaterial({ color: 0xff4a5e, transparent: true, opacity: 0, depthTest: false, side: THREE.DoubleSide }));
+  const blob = new THREE.Mesh(new THREE.CircleGeometry(1.15, 28), new THREE.MeshBasicMaterial({ color: 0x2a1840, transparent: true, opacity: 0.2, depthTest: false }));
+  ring.rotation.x = blob.rotation.x = -Math.PI / 2;
+  ring.renderOrder = 12; blob.renderOrder = 11;
+  scene.add(ring, blob);
   function stepClaw(dt) {
     const p = pBody.translation();
     C.t -= dt;
@@ -249,7 +245,7 @@ async function main() {
     } else if (C.state === 'drop') {
       openT = 1;
       C.y -= 7 * dt;
-      if (C.y <= C.floor + 1.9) { C.state = 'grip'; C.t = 0.7; }
+      if (C.y <= C.floor + 2.2) { C.state = 'grip'; C.t = 0.7; }
     } else if (C.state === 'grip') {
       openT = 0;
       if (C.t <= 0) C.state = 'rise';
@@ -263,7 +259,25 @@ async function main() {
     }
     C.open = damp(C.open, openT, 7, dt);
     machine.claw.position.set(C.x, C.y, C.z);
-    machine.prongs.forEach((pv) => { pv.rotation.x = lerp(0.12, -0.62, C.open); });
+    // 집게 바로 아래 더미 표면에 목표 고리와 그림자
+    let surf = 0.05;
+    if (!(C.x < -3 && C.z > 3)) {
+      for (const d of dolls) { const q = d.body.translation(); const h = Math.hypot(q.x - C.x, q.z - C.z); if (h < d.r) surf = Math.max(surf, q.y + d.r * 0.75); }
+      if (Math.hypot(p.x - C.x, p.z - C.z) < PR) surf = Math.max(surf, p.y + PR * 0.8);
+    }
+    C.surf = damp(C.surf ?? surf, surf, 14, dt);
+    const warn = C.state === 'aim' || C.state === 'hover' || C.state === 'drop';
+    const near = clamp(1 - (C.y - C.surf) / 11, 0, 1);
+    ring.position.set(C.x, C.surf + 0.12, C.z);
+    blob.position.set(C.x, C.surf + 0.1, C.z);
+    ring.material.opacity = damp(ring.material.opacity, warn ? 0.95 : 0, 8, dt);
+    blob.material.opacity = damp(blob.material.opacity, warn ? 0.22 + near * 0.3 : 0.12, 8, dt);
+    const pulse = C.state === 'hover' ? 1 + 0.12 * Math.sin(performance.now() / 55) : 1;
+    ring.scale.setScalar((1.25 - near * 0.3) * pulse);
+    blob.scale.setScalar(0.7 + near * 0.5);
+    ring.rotation.z += dt * 1.5;
+    P.danger = warn && Math.hypot(p.x - C.x, p.z - C.z) < 1.9;
+    machine.prongs.forEach((pv) => { pv.rotation.x = lerp(0.2, -0.7, C.open); });
     machine.carriage.position.set(C.x, RAIL_Y, C.z);
     machine.crossBar.position.z = C.z;
     const top = RAIL_Y - 0.3, bot = C.y + 0.6;
@@ -276,11 +290,11 @@ async function main() {
   const composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
   const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
-  gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.4, thickness: 1.2, scale: 1.25, samples: 12 });
-  gtao.blendIntensity = 1.0;
+  gtao.updateGtaoMaterial({ radius: 0.7, distanceExponent: 1.2, thickness: 1.0, scale: 1.1, samples: 12 });
+  gtao.blendIntensity = 0.75;
   // 접촉 음영을 계산할 때 유리 같은 투명한 것과 털 껍질은 빼 둔다
   const skip = [];
-  scene.traverse((o) => { if (o.isMesh && (o.material.transparent || o.userData.glass || o.userData.fur)) skip.push(o); });
+  scene.traverse((o) => { if (o.isMesh && (o.material.transparent || o.userData.glass || o.userData.outline)) skip.push(o); });
   const gtaoRender = gtao.render.bind(gtao);
   gtao.render = (...a) => {
     for (const o of skip) o.visible = false;
@@ -288,28 +302,19 @@ async function main() {
     for (const o of skip) o.visible = true;
   };
   composer.addPass(gtao);
-  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.28, 0.6, 1.0);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.12, 0.5, 1.02);
   composer.addPass(bloom);
   const finalPass = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uFocus: { value: 0.4 }, uBlur: { value: 4 } },
+    uniforms: { tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uFocus: { value: 0.4 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader: /* glsl */`
-      uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uFocus, uBlur; varying vec2 vUv;
+      uniform sampler2D tDiffuse; varying vec2 vUv;
       void main() {
-        // 미니어처 느낌: 햄스터 높이만 또렷하고 화면 위아래는 살짝 흐리다
-        float d = vUv.y - uFocus;
-        float amt = (d > 0.0 ? smoothstep(0.2, 0.62, d) * 0.45 : smoothstep(0.14, 0.42, -d)) * uBlur;
-        vec3 c = texture2D(tDiffuse, vUv).rgb; float w = 1.0;
-        if (amt > 0.3) {
-          for (int i = 0; i < 16; i++) {
-            float a = float(i) * 2.39996; float r = sqrt((float(i) + 0.5) / 16.0) * amt;
-            c += texture2D(tDiffuse, vUv + vec2(cos(a), sin(a)) * r / uRes).rgb; w += 1.0;
-          }
-        }
-        c /= w;
+        vec3 c = texture2D(tDiffuse, vUv).rgb;
         vec2 q = vUv - 0.5;
-        c *= 1.0 - dot(q, q) * 0.62;                                  // 가장자리 어둡게
-        c = mix(c, c * vec3(1.03, 1.0, 0.96), 0.6);                  // 따뜻한 색감
+        c *= 1.0 - dot(q, q) * 0.28;                       // 가장자리만 살짝 어둡게
+        float l = dot(c, vec3(0.299, 0.587, 0.114));
+        c = mix(vec3(l), c, 1.12);                          // 색을 조금 더 선명하게
         gl_FragColor = vec4(c, 1.0);
       }`,
   });
@@ -329,8 +334,7 @@ async function main() {
     composer.setSize(innerWidth, innerHeight);
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
-    finalPass.uniforms.uRes.value.set(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio());
-  }
+      }
   addEventListener('resize', resize);
   resize();
 
@@ -339,15 +343,12 @@ async function main() {
   function updateCamera(dt, snap) {
     const p = pBody.translation();
     // 뒷판은 뒤에서 보면 비치므로 카메라는 기계 뒤로 빠져도 된다
-    const want = _v.set(clamp(p.x * 0.85, -4.3, 4.3), Math.min(p.y + 4.0, 11.5), p.z - 6.8);
+    const want = _v.set(clamp(p.x * 0.85, -4.3, 4.3), Math.min(p.y + 4.9, 12.2), p.z - 6.4);
     const k = snap ? 1 : 1 - Math.exp(-3.2 * dt);
     camPos.lerp(want, k);
-    camLook.lerp(_v.set(p.x * 0.9, p.y + 1.8, p.z + 3.0), k);
+    camLook.lerp(_v.set(p.x * 0.9, p.y + 1.0, p.z + 3.0), k);
     camera.position.copy(camPos);
     camera.lookAt(camLook);
-    // 또렷하게 볼 높이 = 햄스터의 화면 위치
-    _v.set(p.x, p.y, p.z).project(camera);
-    finalPass.uniforms.uFocus.value = damp(finalPass.uniforms.uFocus.value, clamp(_v.y * 0.5 + 0.5, 0.2, 0.7), 4, dt);
   }
 
   // ================= 루프 =================
@@ -367,7 +368,11 @@ async function main() {
     const wig = b * Math.sin(t * 22) * 0.07;
     body.scale.set(1 - 0.07 * s + 0.08 * b, 1 - 0.11 * s - 0.16 * b + (P.moving ? 0 : Math.sin(t * 2.2) * 0.012), 1 + 0.2 * s + 0.05 * b);
     body.rotation.set(-0.06 * s, wig, wig * 0.8);
-    body.position.y = -0.74 * (0.11 * s + 0.16 * b) * 0.5;
+    body.position.y = -0.74 * (0.11 * s + 0.16 * b) * 0.5 + (P.moving ? Math.abs(Math.sin(P.phase * Math.PI)) * 0.1 : 0);
+    const flap = P.moving ? Math.sin(t * 16) * 0.28 : Math.sin(t * 2.4) * 0.06;
+    ham.userData.ears[0].rotation.z = 0.15 + flap; ham.userData.ears[1].rotation.z = -0.15 - flap;
+    ham.userData.tail.position.x = Math.sin(t * (P.moving ? 18 : 3)) * (P.moving ? 0.07 : 0.02);
+    ham.userData.setMood(!!P.danger);
     machine.bulbs.forEach((bl, i) => bl.scale.setScalar(0.8 + 0.3 * Math.max(0, Math.sin(t * 3 - i * 0.52))));
     customer.look.set(lerp(p.x, C.x, 0.5), lerp(p.y, C.y - 2, 0.3), lerp(p.z, C.z, 0.5));
     $('hideFill').style.width = (P.conceal * 100).toFixed(0) + '%';
@@ -389,7 +394,9 @@ async function main() {
     requestAnimationFrame(frame);
   }
   $('loading').remove();
-  window.__dbg = { P, C, pBody, dolls, customer, camera, setQuality, keys, renderer };
+  // 시험용: 화면을 그리지 않고 물리만 n걸음 진행
+  const advance = (n) => { for (let i = 0; i < n; i++) { stepPlayer(1 / 60); stepClaw(1 / 60); world.step(); time += 1 / 60; } };
+  window.__dbg = { P, C, pBody, dolls, customer, camera, setQuality, keys, renderer, advance };
   requestAnimationFrame(frame);
 }
 
