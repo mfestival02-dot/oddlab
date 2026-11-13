@@ -34,5 +34,8 @@ export class Sfx {
   fall() { if (this._ok('fall', 0.3)) this.tone(720, 110, 0.75, 0.2, 'triangle'); }
   stamp() { if (this._ok('stamp', 0.3)) { this.tone(110, 45, 0.25, 0.7, 'sine'); this.noise(0.12, 0.45, 700, 'lowpass'); this.noise(0.05, 0.2, 3000, 'highpass', 1, 0.02); } }
   bell() { if (this._ok('bell', 0.5)) [[784, 0], [659, 0.32], [784, 0.64], [988, 0.96]].forEach(([f, d]) => { this.tone(f, null, 0.5, 0.16, 'sine', d); this.tone(f * 2.01, null, 0.3, 0.05, 'sine', d); }); }  // 학교 종
+  whoosh() { if (this._ok('whoosh', 0.3)) this.noise(0.55, 0.22, 500, 'bandpass', 0.8, 0, 1800); }               // 느린 화면에 들어갈 때
+  heart() { if (this._ok('heart', 0.3)) { this.tone(70, 48, 0.12, 0.5, 'sine'); this.tone(64, 44, 0.12, 0.38, 'sine', 0.16); } }  // 두근두근
+  pop() { if (this._ok('pop', 0.2)) { this.noise(0.12, 0.35, 1800, 'highpass', 0.7); this.tone(420, 900, 0.1, 0.18, 'triangle'); } }   // 꽃가루
   sad() { if (this._ok('sad', 0.5)) [[392, 0], [330, 0.22], [262, 0.44]].forEach(([f, d]) => this.tone(f, null, 0.3, 0.14, 'triangle', d)); }
 }

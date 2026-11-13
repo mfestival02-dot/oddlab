@@ -18,9 +18,14 @@ const out = path.join(__dirname, '..', 'shots');
   const log = (n, ok, d = '') => console.log(`${ok ? '통과' : '실패'}  ${n}${d ? '  — ' + d : ''}`);
   await p.waitForTimeout(800);
   await p.screenshot({ path: path.join(out, '00_start.png') });
+  await p.keyboard.press('Space'); await p.waitForTimeout(250);
+  const pickShown = await p.isVisible('#pick');
+  await p.screenshot({ path: path.join(out, '00b_pick.png') });
   await p.keyboard.press('Space'); await p.waitForTimeout(150);
   let s0 = await st();
-  log('B0. 시작 표지에서 Space는 게임을 시작만 하고 게이지를 건드리지 않는다', s0.phase === 'aim' && (await p.isHidden('#start')));
+  log('B0. 표지 → 지우개 고르기 → 놀이 순서로 넘어가고, 그 Space로 게이지가 시작되지는 않는다', pickShown && s0.phase === 'aim' && (await p.isHidden('#start')) && (await p.isHidden('#pick')));
+  // 연출이 실제로 나오는지 세어 둔다
+  await p.evaluate(() => { const u = __game.ui, o = u.pop.bind(u); window.__pops = []; u.pop = (t, ...a) => { __pops.push(t); o(t, ...a); }; window.__slowSeen = 0; window.__maxBits = 0; window.__hop = false; const f = () => { if (document.body.classList.contains('slow')) __slowSeen++; __maxBits = Math.max(__maxBits, __game.view.fx.bitC.items.length); if (__game.view.hop) __hop = true; requestAnimationFrame(f); }; f(); });
   await p.waitForTimeout(1700);
   // 프레임률 측정
   const fps = await p.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; performance.now() - t0 < 1500 ? requestAnimationFrame(f) : res(n / 1.5); }; requestAnimationFrame(f); }));
@@ -43,7 +48,7 @@ const out = path.join(__dirname, '..', 'shots');
   await p.keyboard.up('Space');
   await p.screenshot({ path: path.join(out, '02_gauge.png') });
   // 왕복 게이지를 보고 55% 근처에서 튕긴다(일반 조작)
-  await p.waitForFunction(() => { const v = __game.game.gauge.value; return v > 0.5 && v < 0.58; }, null, { polling: 'raf' });
+  await p.waitForFunction(() => { const v = __game.game.gauge.value; return v > 0.62 && v < 0.7; }, null, { polling: 'raf' });
   await p.keyboard.press('Space');
   c = await st();
   const usedPower = await p.evaluate(() => __game.game.shotPower);
@@ -59,10 +64,15 @@ const out = path.join(__dirname, '..', 'shots');
   log('B7. 결과와 이유가 화면에 표시된다', /1P 승리/.test(title) && /올라탔습니다/.test(why), `${title} / ${why}`);
   await p.screenshot({ path: path.join(out, '04_perch_win.png') });
 
+  const fxSeen = await p.evaluate(() => ({ pops: __pops.slice(), slow: __slowSeen, bits: __maxBits, hop: __hop }));
+  log('B7b. 올라타는 순간 느린 화면·글자 효과·꽃가루·폴짝 연출이 나온다', fxSeen.slow > 0 && fxSeen.pops.includes('올라탔다?!') && fxSeen.bits > 20 && fxSeen.hop, `느린 화면 ${fxSeen.slow}프레임, 글자 ${fxSeen.pops.join(' ')}, 꽃가루 ${fxSeen.bits}개`);
   // 다시 시작 → 2인 턴 진행
   await p.click('#again'); await p.waitForTimeout(900);
   c = await st();
-  log('B8. 다시 시작하면 1P 조준 상태로 돌아간다', c.phase === 'aim' && c.player === 0 && c.result === null && c.launches === 1);
+  log('B8. 한 판 더를 누르면 1P 조준 상태로 돌아간다', c.phase === 'aim' && c.player === 0 && c.result === null && c.launches === 1);
+  await p.keyboard.press('ArrowUp'); await p.waitForTimeout(400); const hitUp = await p.evaluate(() => ({ h: __game.game.hit, sel: document.querySelector('#hits .sel').textContent }));
+  await p.keyboard.press('ArrowDown');
+  log('B8b. 위아래 키로 누르는 곳을 고른다', hitUp.h === 2 && hitUp.sel === '뒤' && (await p.evaluate(() => __game.game.hit)) === 1);
   await p.click('#fire'); await clickAt(0.2, 0.34);
   await p.waitForFunction(() => __game.game.phase !== 'physics'); await p.waitForTimeout(1200);
   c = await st();
@@ -70,14 +80,41 @@ const out = path.join(__dirname, '..', 'shots');
   await p.screenshot({ path: path.join(out, '05_p2_turn.png') });
   // 2P가 빈 쪽으로 방향을 돌려 아주 세게 → 책상 밖으로
   await p.keyboard.down('KeyD'); await p.waitForFunction((t) => __game.game.aim[1] >= t, (await st()).aim[1] + 0.9); await p.keyboard.up('KeyD');
-  await p.keyboard.press('Space'); await clickAt(0.9, 1.01);
+  await p.keyboard.press('Space'); await clickAt(0.96, 1.01);
   await p.waitForFunction(() => __game.game.phase !== 'physics'); await p.waitForTimeout(600);
   c = await st();
   log('B10. 2P가 너무 세게 튕기면 떨어져서 1P가 이긴다', c.phase === 'result' && c.result.reason === 'fell' && c.result.winner === 0, `${await p.textContent('#resultTitle')} / ${await p.textContent('#resultWhy')}`);
   await p.screenshot({ path: path.join(out, '06_fell.png') });
 
+  const fellFx = await p.evaluate(() => __pops.includes('앗!!'));
+  log('B10b. 떨어질 때 글자 효과가 나온다', fellFx);
+  // 혼자 하기: 컴퓨터 상대와 필통
+  await p.evaluate(() => localStorage.removeItem('eraser-duel-save-v1'));
+  await p.click('#change'); await p.click('#backBtn'); await p.click('#soloBtn'); await p.waitForTimeout(200);
+  const lockedCards = await p.evaluate(() => [...document.querySelectorAll('#cards0 .card')].filter((c) => c.disabled).length);
+  await p.screenshot({ path: path.join(out, '09_solo_pick.png') });
+  await p.click('#goBtn'); await p.waitForTimeout(300);
+  const before = c.launches + 1;
+  await p.evaluate(() => { __game.game.fire(Math.PI / 2, 0.2, 1); });            // 1P는 옆으로 살짝만
+  await p.waitForFunction(() => __game.game.phase === 'aim' && __game.game.player === 1);
+  await p.keyboard.press('Space'); await p.keyboard.down('ArrowLeft'); await p.waitForTimeout(300); await p.keyboard.up('ArrowLeft');
+  const during = await p.evaluate(() => ({ launches: __game.input.launches, fireDisabled: document.getElementById('fire').disabled, status: document.getElementById('statusText').textContent }));
+  await p.waitForFunction(() => __game.game.lastShot && __game.game.lastShot.player === 1 && __game.game.phase !== 'aim' && __game.game.phase !== 'power', null, { timeout: 60000 });
+  const cpuShot = await p.evaluate(() => ({ power: __game.game.lastShot.power, hit: __game.game.lastShot.hit }));
+  log('B18. 혼자 하기에서 컴퓨터가 스스로 방향·세기를 재고 튕기며, 그동안 내 입력은 받지 않는다', lockedCards === 3 && during.fireDisabled && /컴퓨터/.test(during.status) && cpuShot.power > 0.1, `컴퓨터 발사: 파워 ${(cpuShot.power * 100).toFixed(0)}%, 누르는 곳 ${cpuShot.hit}, 표시 "${during.status}"`);
+  await p.waitForFunction(() => __game.game.phase !== 'physics', null, { timeout: 60000 }); await p.waitForTimeout(500);
+  await p.screenshot({ path: path.join(out, '10_solo_after_cpu.png') });
+  // 내가 이기면 상대 지우개를 딴다
+  await p.evaluate(() => { __game.ui.rematch(); });
+  const cpuType = await p.evaluate(() => __game.game.types[1]);
+  await p.evaluate(() => { const g = __game.game; g.types = ['normal', 'normal']; __game.ui.picks = ['normal', 'normal']; g.restart(); g.fire(0, 0.65, 1); });
+  await p.waitForFunction(() => __game.game.phase === 'result'); await p.waitForTimeout(700);
+  const save = await p.evaluate(() => ({ s: JSON.parse(localStorage.getItem('eraser-duel-save-v1')), extra: document.getElementById('resultExtra').textContent, title: document.getElementById('resultTitle').textContent }));
+  log('B19. 혼자 하기에서 이기면 상대 지우개를 따서 필통에 저장된다', save.s.wins === 1 && save.s.erasers.normal === 2 && /땄다/.test(save.extra), `${save.title} / ${save.extra} / 필통 ${JSON.stringify(save.s.erasers)}`);
+  await p.screenshot({ path: path.join(out, '11_solo_win.png') });
+  await p.click('#change'); await p.click('#backBtn'); await p.keyboard.press('Space'); await p.keyboard.press('Space'); await p.waitForTimeout(300);
+  c = await st();
   // 개발자 패널: 설정 내보내기·가져오기, 입력 중 단축키 차단, 프리셋
-  await p.keyboard.press('KeyR'); await p.waitForTimeout(500);
   await p.click('#devBtn');
   await p.fill('#set_friction', '0.77');
   await p.focus('#set_friction'); await p.keyboard.press('Space'); await p.keyboard.type('r');
@@ -107,7 +144,7 @@ const out = path.join(__dirname, '..', 'shots');
   }
   log('B14. 프리셋 발사와 "같은 조건으로 다시 발사"가 브라우저에서 같은 결과를 낸다', finals.every((f) => f.r.reason === 'perch' && f.r.winner === 0 && f.ticks === finals[0].ticks), `승리 확정까지 걸음 수 ${finals.map((f) => f.ticks).join(' / ')}`);
   // 저장·복원
-  await p.keyboard.press('Escape'); await p.evaluate(() => __game.input.restart());
+  await p.click('text=기본값으로'); await p.evaluate(() => __game.input.restart());
   await p.fill('#dbgAngle', '5'); await p.fill('#dbgPower', '30');
   await p.click('#dbgSave'); await p.click('#dbgFire'); await p.waitForFunction(() => __game.game.phase !== 'physics');
   const moved = await p.evaluate(() => __game.game.curr[0].p[0]);

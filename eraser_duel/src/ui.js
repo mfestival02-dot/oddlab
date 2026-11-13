@@ -4,13 +4,14 @@ import { PHASE, PHASE_KO } from './game.js';
 import { PLAYER } from './view.js';
 import { SUCCESS_PRESET } from './preset.js';
 import { yawQuat } from './sim.js';
-import { initialLayout } from './config.js';
+import { initialLayout, TYPES, TYPE_KEYS, HITS } from './config.js';
+import { loadMeta, applyResult } from './meta.js';
 
 const $ = (id) => document.getElementById(id);
 const deg = (r) => (r * 180) / Math.PI, rad = (d) => (d * Math.PI) / 180;
 // 값이 바뀔 때만 화면에 쓴다(매 프레임 다시 쓰면 느려진다)
 const memo = new Map();
-const put = (id, key, val, apply) => { const k = id + key; if (memo.get(k) === val) return; memo.set(k, val); apply($(id), val); };
+const put = (id, key, val, apply) => { const k = id + '|' + key; if (memo.get(k) === val) return; memo.set(k, val); apply($(id), val); };
 const text = (id, v) => put(id, 't', v, (e, x) => { e.textContent = x; });
 const el = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); kids.forEach((k) => e.append(k)); return e; };
 
@@ -18,10 +19,17 @@ export class UI {
   constructor(game, view, input, sfx) {
     this.game = game; this.view = view; this.input = input; this.sfx = sfx;
     this.started = false; this.shownResult = null; this.lastTick = -1;
+    this.mode = 'versus'; this.picks = ['normal', 'normal']; this.meta = loadMeta(); this.lastStatus = '';
     $('fire').addEventListener('click', () => input.press());
-    $('again').addEventListener('click', () => { sfx.click(); input.restart(); });
+    $('again').addEventListener('click', () => { sfx.click(); this.rematch(); });
+    $('change').addEventListener('click', () => { sfx.click(); this.showPick(this.mode); });
+    $('soloBtn').addEventListener('click', () => { sfx.init(); sfx.click(); this.showPick('solo'); });
+    $('goBtn').addEventListener('click', () => this.begin());
+    $('backBtn').addEventListener('click', () => { sfx.click(); $('pick').hidden = true; $('start').hidden = false; });
+    document.querySelectorAll('#hits [data-h]').forEach((b) => b.addEventListener('click', () => { if (!input.locked()) { game.setHit(Number(b.dataset.h)); sfx.click(); } }));
+    document.addEventListener('click', (e) => { const b = e.target.closest('.btn'); if (b && !b.classList.contains('go')) { b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); } });
     $('retryBtn').addEventListener('click', () => { game.retryTurn(); input.clear(); });
-    $('startBtn').addEventListener('click', () => this.start());
+    $('startBtn').addEventListener('click', () => { sfx.init(); sfx.click(); this.showPick('versus'); });
     $('mute').addEventListener('click', () => {
       sfx.init(); sfx.setMuted(!sfx.muted);
       $('mute').textContent = sfx.muted ? '소리 끔' : '소리 켬'; $('mute').setAttribute('aria-pressed', String(sfx.muted));
@@ -41,12 +49,59 @@ export class UI {
     $('perchRing').style.strokeDasharray = C; this.perchC = C;
     this._buildDev();
   }
-  start() {
-    if (this.started) return;
+  // 표지 → 지우개 고르기 → 놀이
+  showPick(mode) {
+    this.mode = mode; this.started = false;
+    this.meta = loadMeta();
+    $('start').hidden = true; $('result').hidden = true; $('pick').hidden = false;
+    const solo = mode === 'solo', own = this.meta.erasers;
+    if (solo && !(own[this.picks[0]] > 0)) this.picks[0] = 'normal';
+    if (solo) this.picks[1] = TYPE_KEYS[Math.floor(Math.random() * TYPE_KEYS.length)];
+    $('pickTitle').textContent = solo ? '필통에서 지우개 고르기' : '지우개 고르기';
+    $('pickInfo').textContent = solo ? `이기면 상대 지우개를 따고, 지면 내 지우개를 뺏겨요. (${this.meta.wins}승 ${this.meta.losses}패)` : '둘이서 하나씩 골라요.';
+    $('pickH0').textContent = solo ? '내 지우개 (1P)' : '1P 지우개';
+    $('pickH1').textContent = solo ? '컴퓨터가 꺼낸 지우개' : '2P 지우개';
+    for (const side of [0, 1]) {
+      const box = $('cards' + side); box.innerHTML = '';
+      for (const k of TYPE_KEYS) {
+        const T = TYPES[k], locked = solo && (side === 0 ? !(own[k] > 0) : k !== this.picks[1]);
+        const c = el('button', { className: 'card' + (this.picks[side] === k ? ' sel' : ''), disabled: locked });
+        c.style.setProperty('--c', PLAYER[side].css);
+        c.append(el('i'), T.name, el('small', { textContent: T.desc }));
+        if (solo && side === 0) c.append(el('em', { textContent: own[k] > 0 ? '×' + own[k] : '없음' }));
+        c.addEventListener('click', () => { if (solo && side === 1) return; this.picks[side] = k; this.sfx.click(); this.showPick(mode); });
+        box.append(c);
+      }
+    }
+  }
+  begin() {
+    $('pick').hidden = true;
+    this.game.types = [...this.picks];
     this.started = true;
-    $('start').hidden = true;
+    this.input.restart();
     this.sfx.init(); this.sfx.bell();
-    this.banner('1P 차례!', '파랑 지우개부터');
+    this.banner('1P 차례!', this.mode === 'solo' ? '컴퓨터와 한 판' : '파랑 지우개부터');
+  }
+  rematch() {
+    if (this.mode === 'solo') {
+      if (!(this.meta.erasers[this.picks[0]] > 0)) return this.showPick('solo');     // 뺏겨서 없으면 다시 고른다
+      this.picks[1] = TYPE_KEYS[Math.floor(Math.random() * TYPE_KEYS.length)];
+      this.game.types = [...this.picks];
+    }
+    this.input.restart();
+  }
+  // Space·Enter로 다음 화면으로
+  advanceMenu() {
+    if (!$('start').hidden) { this.sfx.init(); this.showPick('versus'); return true; }
+    if (!$('pick').hidden) { this.begin(); return true; }
+    return false;
+  }
+  pop(text, p, color = '#d9402f') {
+    const sc = this.view.project(p[0], Math.max(0.05, p[1]) + 0.15, p[2]);
+    if (sc.x < -50 || sc.x > innerWidth + 50 || sc.y < 0 || sc.y > innerHeight) return;
+    const d = el('div', { className: 'pop', textContent: text });
+    d.style.left = sc.x + 'px'; d.style.top = sc.y + 'px'; d.style.color = color; d.style.setProperty('--r', (Math.random() * 16 - 8).toFixed(1) + 'deg');
+    $('pops').append(d); setTimeout(() => d.remove(), 1000);
   }
   banner(text, sub = '') {
     const b = $('banner');
@@ -105,7 +160,7 @@ export class UI {
 
     root.append(el('h3', { textContent: '발사 재현' }));
     this.dAngle = el('input', { type: 'number', id: 'dbgAngle', step: 0.5, value: 0 });
-    this.dPower = el('input', { type: 'number', id: 'dbgPower', step: 1, min: 0, max: 100, value: 55 });
+    this.dPower = el('input', { type: 'number', id: 'dbgPower', step: 1, min: 0, max: 100, value: 65 });
     root.append(el('div', { className: 'two' }, [
       el('div', {}, [el('label', { htmlFor: 'dbgAngle', textContent: '방향(도)' }), this.dAngle]),
       el('div', {}, [el('label', { htmlFor: 'dbgPower', textContent: '파워(%)' }), this.dPower]),
@@ -169,12 +224,12 @@ export class UI {
     const g = this.game, a = Number(this.dAngle.value), p = Number(this.dPower.value);
     if (!Number.isFinite(a) || !Number.isFinite(p) || p < 0 || p > 100) return this.setMsg2('방향은 숫자, 파워는 0~100으로 넣어 주세요.', true);
     if (g.phase !== PHASE.AIM && g.phase !== PHASE.POWER) return this.setMsg2('조준 중일 때만 발사할 수 있습니다. 복원하거나 다시 시작하세요.', true);
-    g.fire(rad(a), p / 100); this.input.clear();
+    g.fire(rad(a), p / 100, g.hit); this.input.clear();
     this.setMsg2(`${PLAYER[g.player].name}: 방향 ${a}도, 파워 ${p}%로 발사했습니다.`);
   }
   loadPreset() {
     const g = this.game, L = initialLayout();
-    const snap = { state: { bodies: L.bodies.map((b) => ({ p: b.p, q: yawQuat(b.yaw) })) }, player: 0, aim: [...L.aim], angle: rad(SUCCESS_PRESET.angleDeg), power: SUCCESS_PRESET.power, settings: { ...SUCCESS_PRESET.settings } };
+    const snap = { state: { bodies: L.bodies.map((b) => ({ p: b.p, q: yawQuat(b.yaw), type: 'normal' })) }, player: 0, aim: [...L.aim], angle: rad(SUCCESS_PRESET.angleDeg), power: SUCCESS_PRESET.power, hit: 1, settings: { ...SUCCESS_PRESET.settings } };
     g.restore(snap); this.afterRestore(snap);
   }
   afterRestore(s, resetCam = true) {
@@ -188,6 +243,9 @@ export class UI {
   // ---------- 매 프레임 표시 ----------
   update(bodies) {
     const g = this.game, pl = PLAYER[g.player], sfx = this.sfx;
+    const solo = this.mode === 'solo', cpuTurn = solo && g.player === 1;
+    const who = (i) => (solo && i === 1 ? '컴퓨터' : PLAYER[i].name);
+    text('tagName1', solo ? '컴퓨터' : '2P'); text('tagType0', TYPES[g.types[0]].name); text('tagType1', TYPES[g.types[1]].name);
     put('turn', 'p', pl.css, (e, x) => document.documentElement.style.setProperty('--p', x));
     const over = g.phase === PHASE.RESULT;
     put('tag0', 'on', over ? g.result.winner === 0 : g.player === 0, (e, x) => e.classList.toggle('on', x));
@@ -195,14 +253,18 @@ export class UI {
     const T = g.timers, S = g.applied;
     let main = '', sub = '';
     const perching = g.phase === PHASE.PHYSICS && !g.sim.fallen[0] && !g.sim.fallen[1] && g.info.upper !== null && T.perch > 0.05;
-    if (g.phase === PHASE.AIM) { main = `${pl.name}: 방향을 정하고 게이지를 시작하세요`; sub = '상대 지우개 위에 올라타면 승리'; }
-    else if (g.phase === PHASE.POWER) { main = '눈금을 보고 튕기세요!'; sub = '빨간 칸은 책상 밖으로 날아갈 수 있어요'; }
+    if (g.phase === PHASE.AIM) { main = cpuTurn ? '컴퓨터가 방향을 재는 중…' : `${pl.name}: 방향을 정하고 게이지를 시작하세요`; sub = cpuTurn ? '' : '상대 지우개 위에 올라타면 승리'; }
+    else if (g.phase === PHASE.POWER) { main = cpuTurn ? '컴퓨터가 세기를 재는 중…' : '눈금을 보고 튕기세요!'; sub = cpuTurn ? '' : '빨간 칸은 책상 밖으로 날아갈 수 있어요'; }
     else if (g.phase === PHASE.PHYSICS) {
       if (g.sim.fallen[0] || g.sim.fallen[1]) main = '앗, 떨어졌다…';
-      else if (perching) { main = '걸침 확인 중…'; sub = `${PLAYER[g.info.upper].name}가 위 · ${T.perch.toFixed(1)} / ${S.perchHold.toFixed(1)}초`; }
+      else if (perching) { main = '걸침 확인 중…'; sub = `${who(g.info.upper)}가 위 · ${T.perch.toFixed(1)} / ${S.perchHold.toFixed(1)}초`; }
       else main = '지우개가 멈추기를 기다리는 중';
     } else main = '경기 끝';
     text('statusText', main); text('statusSub', sub);
+    if (main !== this.lastStatus) { this.lastStatus = main; const st = $('status'); st.classList.remove('flip'); void st.offsetWidth; st.classList.add('flip'); }
+    // 누르는 곳
+    document.querySelectorAll('#hits [data-h]').forEach((b) => { const h = Number(b.dataset.h); put('hit' + h, 'sel', g.hit === h, () => b.classList.toggle('sel', g.hit === h)); put('hit' + h, 'dis', g.phase !== PHASE.AIM || cpuTurn || !this.started, (_e, x) => { b.disabled = x; }); });
+    text('hitDesc', HITS[g.hit].desc);
     put('status', 'h', over, (e, x) => { e.hidden = x; });
 
     // 자 게이지
@@ -215,14 +277,15 @@ export class UI {
     text('gaugeNum', g.phase === PHASE.AIM ? '' : Math.round(pw * 100) + '%');
     put('gauge', 'a', Math.round(pw * 100), (e, x) => e.setAttribute('aria-valuenow', x));
     if (g.phase === PHASE.POWER) { const tk = Math.floor(pw * 10); if (tk !== this.lastTick) { this.lastTick = tk; sfx.tick(); } }
-    const canAct = this.started && (g.phase === PHASE.AIM || g.phase === PHASE.POWER);
+    const canAct = this.started && !cpuTurn && (g.phase === PHASE.AIM || g.phase === PHASE.POWER);
     put('fire', 'd', !canAct, (e, x) => { e.disabled = x; });
     text('fire', g.phase === PHASE.POWER ? '튕기기!' : '게이지 시작');
-    const noAim = !(this.started && g.phase === PHASE.AIM);
+    const noAim = !(this.started && !cpuTurn && g.phase === PHASE.AIM);
     put('left', 'd', noAim, (e, x) => { e.disabled = x; }); put('right', 'd', noAim, (e, x) => { e.disabled = x; });
 
     // 걸침 확인: 지우개 위에 색연필 동그라미가 차오른다
     const ring = $('perch');
+    this.perching = perching;
     if (perching && bodies) {
       const up = bodies[g.info.upper].p, sc = this.view.project(up[0], up[1], up[2]);
       ring.hidden = false; ring.style.left = sc.x + 'px'; ring.style.top = sc.y + 'px';
@@ -236,13 +299,14 @@ export class UI {
       if (this.shownResult !== g.result) {
         this.shownResult = g.result;
         const { winner, reason } = g.result;
-        $('resultTitle').textContent = winner === null ? '무승부' : `${PLAYER[winner].name} 승리!`;
+        $('resultTitle').textContent = winner === null ? '무승부' : `${who(winner)} 승리!`;
+        $('resultExtra').textContent = solo ? applyResult(this.meta, winner, g.types[0], g.types[1], Object.fromEntries(TYPE_KEYS.map((k) => [k, TYPES[k].name]))) : '';
         $('resultTitle').style.color = winner === null ? '' : PLAYER[winner].css;
         $('resultWhy').textContent = reason === 'perch' ? '상대 위에 올라탔습니다' : reason === 'fell' ? '상대가 책상 밖으로 떨어졌습니다' : '둘 다 책상 밖으로 떨어졌습니다';
-        $('stamp').innerHTML = winner === null ? this.stampSvg('#2f66c8', '다시 해 봐요', '비김') : this.stampSvg('#d9402f', '참 잘했어요', PLAYER[winner].name);
+        $('stamp').innerHTML = winner === null ? this.stampSvg('#2f66c8', '다시 해 봐요', '비김') : this.stampSvg(solo && winner === 1 ? '#2f66c8' : '#d9402f', solo && winner === 1 ? '다시 해 봐요' : '참 잘했어요', solo ? (winner === 0 ? '승' : '패') : PLAYER[winner].name);
         res.hidden = true; void res.offsetWidth; res.hidden = false;       // 도장 찍는 움직임을 다시 튼다
         winner === null ? sfx.sad() : sfx.stamp();
-        if (winner !== null) setTimeout(() => sfx.bell(), 350);
+        if (winner !== null && !(solo && winner === 1)) setTimeout(() => sfx.bell(), 350); else if (winner === 1) setTimeout(() => sfx.sad(), 350);
       }
     } else { if (!res.hidden) res.hidden = true; this.shownResult = null; }
     put('retry', 'h', !(g.stuck && g.phase === PHASE.PHYSICS), (e, x) => { e.hidden = x; });

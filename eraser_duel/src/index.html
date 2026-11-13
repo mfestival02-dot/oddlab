@@ -100,6 +100,53 @@
   .cover .foot small { display: block; margin-top: 8px; opacity: .85; font-size: 16px; }
   .cover .btn.go { background: var(--red); font-size: 28px; }
 
+  /* 누르는 곳 고르기 */
+  #hits { width: 100%; display: flex; justify-content: center; align-items: center; gap: 7px; font-weight: 700; text-shadow: 0 0 6px rgba(255, 246, 220, .95), 0 0 6px rgba(255, 246, 220, .95); }
+  #hits .btn.small { min-width: 58px; }
+  #hits .btn.sel { background: var(--p); color: #fff; transform: translateY(2px); box-shadow: 0 1px 0 var(--pencil); }
+  #hitDesc { font-weight: 400; font-size: 16px; min-width: 150px; text-align: left; }
+
+  /* 만화 글자 효과 */
+  #pops { position: fixed; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
+  .pop { position: absolute; font-weight: 700; font-size: clamp(30px, 5vw, 54px); white-space: nowrap; transform: translate(-50%, -50%);
+    text-shadow: -3px -3px 0 #fffdf4, 3px -3px 0 #fffdf4, -3px 3px 0 #fffdf4, 3px 3px 0 #fffdf4, 0 4px 0 rgba(60, 40, 20, .25); animation: pop .95s cubic-bezier(.2, 1.4, .4, 1) both; }
+  @keyframes pop { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--r)) scale(.3); } 18% { opacity: 1; transform: translate(-50%, -105%) rotate(var(--r)) scale(1.18); } 30% { transform: translate(-50%, -100%) rotate(var(--r)) scale(1); } 75% { opacity: 1; transform: translate(-50%, -125%) rotate(var(--r)) scale(1); } 100% { opacity: 0; transform: translate(-50%, -160%) rotate(var(--r)) scale(.9); } }
+
+  /* 느린 화면: 위아래 검은 띠 */
+  .cinebar { position: fixed; left: 0; right: 0; height: 0; background: #17120d; z-index: 4; transition: height .16s ease-out; pointer-events: none; }
+  #cineTop { top: 0; } #cineBot { bottom: 0; }
+  body.slow .cinebar { height: 7.5vh; }
+  body.slow #bar, body.slow #keys { opacity: .25; transition: opacity .15s; }
+
+  /* 움직임 */
+  .btn.bump { animation: bump .28s cubic-bezier(.3, 1.8, .5, 1); }
+  @keyframes bump { 0% { transform: scale(.86); } 100% { transform: scale(1); } }
+  #status.flip { animation: flip .32s cubic-bezier(.3, 1.5, .5, 1); }
+  @keyframes flip { 0% { transform: translateX(-50%) rotate(-5deg) translateY(-14px); opacity: .3; } 100% { transform: translateX(-50%) rotate(-1deg); opacity: 1; } }
+  #result .slip { animation: slip .4s cubic-bezier(.3, 1.4, .5, 1) both; }
+  @keyframes slip { 0% { transform: rotate(-6deg) translateY(-40px) scale(.8); opacity: 0; } 100% { transform: rotate(1.2deg); opacity: 1; } }
+  .tag.on b { animation: wag .5s ease-out; }
+  @keyframes wag { 0% { letter-spacing: .3em; } 100% { letter-spacing: 0; } }
+
+  /* 지우개 고르기 */
+  #pick { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; background: rgba(60, 44, 24, .42); padding: 14px; box-sizing: border-box; }
+  #pick .sheet { width: min(560px, 100%); max-height: 100%; overflow: auto; box-sizing: border-box; padding: 18px 22px 20px 40px; transform: rotate(.6deg); }
+  #pick h2 { margin: 0 0 4px; font-size: 34px; color: var(--blue); }
+  #pick h3 { margin: 12px 0 6px; font-size: 22px; }
+  #pick .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  #pick .card { background: #fffdf4; border: 2.5px solid var(--pencil); border-radius: 10px; padding: 6px 4px 5px; text-align: center; box-shadow: 0 4px 0 var(--pencil); font-weight: 700; font-size: 20px; line-height: 1.15; position: relative; }
+  #pick .card small { display: block; font-weight: 400; font-size: 14.5px; color: #7a6f62; }
+  #pick .card i { display: block; height: 26px; margin: 2px auto 5px; border-radius: 4px; border: 2px solid var(--pencil); background: linear-gradient(90deg, #f6f3ec 0 22%, var(--c) 22% 82%, #f6f3ec 82%); }
+  #pick .card em { position: absolute; right: -7px; top: -9px; font-style: normal; background: #ffe27a; border: 2px solid var(--pencil); border-radius: 12px; font-size: 14px; padding: 0 6px; }
+  #pick .card.sel { background: #fff3b8; transform: translateY(3px); box-shadow: 0 1px 0 var(--pencil); outline: 3px solid var(--c); }
+  #pick .card:disabled { opacity: .4; box-shadow: 0 2px 0 var(--pencil); }
+  #pick .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .cover .modes { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .cover .modes .btn.go { min-width: 0; font-size: 25px; padding: 8px 18px; }
+  #result .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+  #resultExtra { margin: -6px 0 10px; font-weight: 700; color: var(--red); font-size: 20px; }
+  @media (max-width: 640px) { #pick .cards { grid-template-columns: repeat(2, 1fr); } #hitDesc { display: none; } }
+
   /* 개발자 패널: 공책 한 장 */
   #dev { position: fixed; z-index: 8; right: 0; top: 0; bottom: 0; width: min(380px, 100vw); overflow-y: auto; padding: 12px 14px 30px 34px; box-sizing: border-box; font-size: 17px; border-radius: 0; border-left: 2px solid #d8ccb6; }
   #dev::before { display: none; }
@@ -130,7 +177,7 @@
     #gauge { width: calc(100vw - 150px); } #keys { display: none; }
     .tag { width: 96px; }
   }
-  @media (prefers-reduced-motion: reduce) { #banner.show, #stamp { animation-duration: .01s; } .tag { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { #banner.show, #stamp, .btn.go, .btn.bump, #status.flip, #result .slip, .tag.on b { animation-duration: .01s; animation-iteration-count: 1; } .tag { transition: none; } }
 </style>
 </head>
 <body>
@@ -141,16 +188,18 @@
 </svg>
 
 <div id="turn">
-  <div class="tag on" id="tag0"><b>1P</b><span>말랑</span><small>파랑 지우개</small></div>
-  <div class="tag" id="tag1"><b>2P</b><span>쫀득</span><small>주황 지우개</small></div>
+  <div class="tag on" id="tag0"><b id="tagName0">1P</b><span id="tagType0">보통</span><small>파랑 지우개</small></div>
+  <div class="tag" id="tag1"><b id="tagName1">2P</b><span id="tagType1">보통</span><small>주황 지우개</small></div>
 </div>
 <div class="note" id="status"><span id="statusText">방향을 정하세요</span><small id="statusSub"></small></div>
 <div id="banner" aria-live="polite"><div class="board"><span id="bannerText"></span><small id="bannerSub"></small></div></div>
+<div id="pops" aria-hidden="true"></div>
+<div class="cinebar" id="cineTop"></div><div class="cinebar" id="cineBot"></div>
 <svg id="perch" viewBox="0 0 150 150" hidden aria-hidden="true"><circle id="perchRing" cx="75" cy="75" r="62"/></svg>
 
 <div id="result" hidden>
   <svg id="stamp" viewBox="0 0 160 160" aria-hidden="true"></svg>
-  <div class="note slip"><h2 id="resultTitle"></h2><p id="resultWhy"></p><button class="btn" id="again">다시 하기</button></div>
+  <div class="note slip"><h2 id="resultTitle"></h2><p id="resultWhy"></p><p id="resultExtra"></p><div class="acts"><button class="btn" id="again">한 판 더</button><button class="btn small" id="change">지우개 바꾸기</button></div></div>
 </div>
 <div class="note" id="retry" hidden>
   <p style="margin:0 0 8px;font-weight:700">지우개가 멈추지 않아요.</p>
@@ -158,6 +207,11 @@
 </div>
 
 <div id="bar">
+  <div id="hits" role="group" aria-label="누르는 곳">
+    <span>누르는 곳</span>
+    <button class="btn small" data-h="0">앞</button><button class="btn small sel" data-h="1">가운데</button><button class="btn small" data-h="2">뒤</button>
+    <span id="hitDesc"></span>
+  </div>
   <button class="btn" id="left" aria-label="방향 왼쪽으로">◀</button>
   <div id="gaugeWrap">
     <div id="gaugePin"></div><div id="gaugeNum"></div>
@@ -167,7 +221,7 @@
   </div>
   <button class="btn" id="right" aria-label="방향 오른쪽으로">▶</button>
   <button class="btn go" id="fire">게이지 시작</button>
-  <div id="keys"><kbd>←</kbd><kbd>→</kbd> 방향 · <kbd>Space</kbd> 게이지 시작 / 튕기기 · <kbd>R</kbd> 다시 하기</div>
+  <div id="keys"><kbd>←</kbd><kbd>→</kbd> 방향 · <kbd>↑</kbd><kbd>↓</kbd> 누르는 곳 · <kbd>Space</kbd> 게이지 시작 / 튕기기 · <kbd>R</kbd> 다시 하기</div>
 </div>
 <button class="btn small" id="mute" aria-pressed="false">소리 켬</button>
 <div id="corner"><button class="btn small" id="devBtn" aria-expanded="false">개발자 패널</button></div>
@@ -180,11 +234,21 @@
       <div class="who"><span><u>3</u>학년</span><span><u>2</u>반</span><span>이름 <u>나랑 너</u></span></div>
     </div>
     <ol>
-      <li data-n="1">방향을 정하고</li>
+      <li data-n="1">방향과 누르는 곳을 정하고</li>
       <li data-n="2">자 눈금이 왔다 갔다 할 때 튕겨서</li>
       <li data-n="3">상대 지우개 <b>위에 올라타면</b> 승리! 책상 밖으로 떨어지면 져요.</li>
     </ol>
-    <div class="foot"><button class="btn go" id="startBtn">시작하기</button><small>둘이서 번갈아 하는 놀이예요 · Space로도 시작</small></div>
+    <div class="foot"><div class="modes"><button class="btn go" id="soloBtn">혼자 하기</button><button class="btn go" id="startBtn">둘이 하기</button></div><small>혼자 하면 컴퓨터와 겨뤄 지우개를 따 모아요 · Space는 둘이 하기</small></div>
+  </div>
+</div>
+
+<div id="pick" hidden>
+  <div class="note sheet">
+    <h2 id="pickTitle">지우개 고르기</h2>
+    <div id="pickInfo"></div>
+    <h3 id="pickH0">1P 지우개</h3><div class="cards" id="cards0"></div>
+    <h3 id="pickH1">2P 지우개</h3><div class="cards" id="cards1"></div>
+    <div class="foot"><button class="btn small" id="backBtn">처음으로</button><button class="btn go" id="goBtn">놀이 시작</button></div>
   </div>
 </div>
 

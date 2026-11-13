@@ -1,5 +1,5 @@
 // 턴 진행과 승패 판정. 화면·입력 장치와 무관하다.
-import { DT, defaultSettings, initialLayout } from './config.js';
+import { DT, defaultSettings, initialLayout, TYPES } from './config.js';
 import { Sim, yawQuat } from './sim.js';
 
 export const PHASE = { AIM: 'aim', POWER: 'power', PHYSICS: 'physics', RESULT: 'result' };
@@ -16,6 +16,8 @@ export class Game {
     this.savedShot = null;               // '발사 전 상태 저장'으로 남긴 것
     this.lastShot = null;                // 마지막 발사 직전 상태(자동 저장)
     this.onEvent = () => {};
+    this.types = ['normal', 'normal'];
+    this.events = [];                    // 연출·소리용 사건 기록(그리는 쪽에서 꺼내 쓴다)
     this.restart();
   }
 
@@ -32,20 +34,22 @@ export class Game {
     this.gauge = { t: 0, value: 0 };
     this.info = { touching: false, upper: null, normalY: 0 };
     this.launchInfo = null;
+    this.hit = 1;
+    this.events.length = 0;
   }
   restart() {
-    const L = initialLayout();
+    const L = initialLayout(this.types);
     this.player = 0;
     this.aim = [...L.aim];
-    this._build({ bodies: L.bodies.map((b) => ({ p: b.p, q: yawQuat(b.yaw) })) }, { ...this.pending });
+    this._build({ bodies: L.bodies.map((b) => ({ p: b.p, q: yawQuat(b.yaw), type: b.type })) }, { ...this.pending });
     this.phase = PHASE.AIM;
     this.onEvent('restart');
   }
   get applied() { return this.sim.S; }
 
   // 발사 직전 상태 한 벌: 위치·회전·속도·수면, 차례, 방향·파워, 적용할 설정
-  snapshot(angle = this.aim[this.player], power = null) {
-    return { kind: 'eraser-duel-shot', version: 1, state: this.sim.getState(), player: this.player, aim: [...this.aim], angle, power, settings: { ...this.pending } };
+  snapshot(angle = this.aim[this.player], power = null, hit = this.hit) {
+    return { kind: 'eraser-duel-shot', version: 1, state: this.sim.getState(), player: this.player, aim: [...this.aim], angle, power, hit, settings: { ...this.pending } };
   }
   restore(snap, { useSnapSettings = true } = {}) {
     if (useSnapSettings) this.pending = { ...snap.settings };
@@ -53,6 +57,8 @@ export class Game {
     this.aim = [...snap.aim];
     this.aim[this.player] = snap.angle;
     this._build(snap.state, { ...this.pending });
+    this.types = snap.state.bodies.map((b) => b.type || 'normal');
+    this.hit = snap.hit ?? 1;
     this.phase = PHASE.AIM;
     this.onEvent('restore');
   }
@@ -62,6 +68,10 @@ export class Game {
     if (this.phase !== PHASE.AIM) return;
     this.aim[this.player] += dir * AIM_SPEED * dt;
   }
+  setHit(h) {                            // 누르는 위치: 0 앞 / 1 가운데 / 2 뒤 (조준 중에만)
+    if (this.phase !== PHASE.AIM) return;
+    this.hit = Math.max(0, Math.min(2, h));
+  }
   press() {                              // 스페이스·버튼: 게이지 시작 → 튕기기
     if (this.phase === PHASE.AIM) {
       this.phase = PHASE.POWER;
@@ -70,20 +80,22 @@ export class Game {
       return 'gauge';
     }
     if (this.phase === PHASE.POWER && this.gauge.t >= MIN_GAUGE_TIME) {
-      this.fire(this.aim[this.player], this.gauge.value);
+      this.fire(this.aim[this.player], this.gauge.value, this.hit);
       return 'fire';
     }
     return null;
   }
   // 방향과 파워를 직접 지정해서 발사(일반 플레이는 press()를 거쳐 여기로 온다)
-  fire(angle, power) {
+  fire(angle, power, hit = this.hit) {
     if (this.phase !== PHASE.AIM && this.phase !== PHASE.POWER) return false;
     this.aim[this.player] = angle;
-    this.lastShot = this.snapshot(angle, power);
+    this.lastShot = this.snapshot(angle, power, hit);
     // 설정은 발사 시점에 확정한다: 새 값이 있으면 같은 상태로 물리 세계를 다시 만든다
     this._build(this.lastShot.state, { ...this.pending });
-    this.launchInfo = this.sim.launch(this.player, angle, power);
+    this.hit = hit;
+    this.launchInfo = this.sim.launch(this.player, angle, power, hit);
     this.shotPower = power;
+    this.events.push({ type: 'launch', i: this.player, power, p: this.curr[this.player].p });
     this.phase = PHASE.PHYSICS;
     this.onEvent('fire');
     return true;
@@ -92,7 +104,7 @@ export class Game {
     if (!this.lastShot) return false;
     const s = this.lastShot;
     this.restore(s);
-    return this.fire(s.angle, s.power);
+    return this.fire(s.angle, s.power, s.hit ?? 1);
   }
 
   // ---------- 진행 ----------
@@ -110,8 +122,17 @@ export class Game {
     }
     if (this.phase === PHASE.PHYSICS || this.phase === PHASE.RESULT) {
       this.prev = this.curr;
+      const wasFallen = [...this.sim.fallen];
       this.sim.step();
       this.curr = this.sim.getState().bodies;
+      // 속도가 갑자기 바뀌면 부딪힌 것: 세기와 위치를 기록해 둔다
+      const g = this.applied.gravity * DT;
+      for (let i = 0; i < 2; i++) {
+        const a = this.prev[i].lv, b = this.curr[i].lv;
+        const dv = Math.hypot(b[0] - a[0], b[1] - a[1] + g, b[2] - a[2]);
+        if (dv > 0.9) this.events.push({ type: 'impact', i, strength: dv, p: this.curr[i].p, down: a[1] < -0.5, other: this.sim.contact().touching });
+        if (this.sim.fallen[i] && !wasFallen[i]) this.events.push({ type: 'fall', i, p: this.curr[i].p });
+      }
     }
     if (this.phase === PHASE.PHYSICS) this.judge();
   }
@@ -134,8 +155,8 @@ export class Game {
     } else {
       // 2) 걸침: 실제로 받쳐진 접촉이 끊기지 않고 유지되어야 한다
       const up = this.info.upper;
-      if (up !== null && up === this.perchOwner && slow[0] && slow[1]) T.perch += DT;
-      else { T.perch = 0; this.perchOwner = up; }
+      if (up !== null && up === this.perchOwner && slow[0] && slow[1]) { if (T.perch === 0) this.events.push({ type: 'perch-start', i: up, p: this.curr[up].p }); T.perch += DT; }
+      else { if (T.perch > 0.2) this.events.push({ type: 'perch-lost', i: this.perchOwner, p: this.curr[this.perchOwner ?? 0].p }); T.perch = 0; this.perchOwner = up; }
       if (T.perch >= S.perchHold) return this.finish(this.perchOwner, 'perch');
       // 3) 둘 다 멈췄고 걸친 것도 아니면 차례를 넘긴다
       T.stable = slow[0] && slow[1] ? T.stable + DT : 0;
@@ -154,6 +175,7 @@ export class Game {
     this.gauge = { t: 0, value: 0 };
     this.timers = { phys: 0, stable: 0, perch: 0, other: 0 };
     this.perchOwner = null;
+    this.hit = 1;
     // 다음 사람의 기본 방향은 상대 쪽
     const a = this.curr[this.player].p, b = this.curr[1 - this.player].p;
     this.aim[this.player] = Math.atan2(b[2] - a[2], b[0] - a[0]);

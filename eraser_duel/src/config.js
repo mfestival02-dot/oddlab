@@ -2,8 +2,23 @@
 export const DT = 1 / 120;                       // 고정 시간 간격(초)
 export const SETTINGS_VERSION = 1;
 
+// 지우개 종류. dims는 반치수(길이/두께/폭), fr·re·ang은 마찰·반발·각 감쇠에 곱하는 배율,
+// lift·push는 뜨는 힘·나가는 힘 배율, spin은 회전에 더하는 값. 값은 test/typesearch.mjs로 찾았다.
+export const TYPES = {
+  mini:   { name: '꼬마', dims: [0.18, 0.045, 0.105], mass: 0.5, fr: 1.06, re: 0.66, ang: 2.48, lift: 0.83, spin: -0.15, push: 1.05, desc: '작고 가벼워요' },
+  normal: { name: '보통', dims: [0.25, 0.05, 0.125], mass: 1.0, fr: 1.0, re: 1.0, desc: '무난해요' },
+  jumbo:  { name: '점보', dims: [0.33, 0.065, 0.165], mass: 2.1, fr: 1.2, re: 0.6, desc: '무겁고 넓어요' },
+  bouncy: { name: '탱탱', dims: [0.23, 0.06, 0.12], mass: 0.8, fr: 1.52, re: 1.69, ang: 2.61, lift: 1.26, spin: -0.2, push: 0.89, desc: '통통 튀어요' },
+};
+export const TYPE_KEYS = Object.keys(TYPES);
+// 누르는 위치: v는 위로 뜨는 힘, h는 앞으로 가는 힘, spin은 회전에 더하는 값
+export const HITS = [
+  { key: 'front', name: '앞', v: 0.35, h: 1.12, spin: -0.22, desc: '낮게 미끄러져 밀어내기' },
+  { key: 'mid', name: '가운데', v: 1.0, h: 1.0, spin: 0, desc: '기본' },
+  { key: 'back', name: '뒤', v: 1.4, h: 0.9, spin: 0.18, desc: '높이 떠서 올라타기' },
+];
+
 export const GEOM = {
-  hx: 0.25, hy: 0.05, hz: 0.125,                 // 지우개 반치수: 길이 / 두께 / 폭
   round: 0.012,                                  // 충돌체 모서리 반경
   desk: { hx: 3.0, hz: 2.0, thick: 0.25 },       // 책상 60cm × 40cm, 윗면이 y=0
   floorY: -7,                                    // 교실 바닥
@@ -12,7 +27,7 @@ export const GEOM = {
 
 // key, 이름, 기본값, 최소, 최대, 간격, 설명
 export const SETTING_DEFS = [
-  ['impulse',     '발사 충격량',       19.6,  0.5, 30,  0.1,  '파워 100%일 때의 수평 충격량. 수평 이동 세기.'],
+  ['impulse',     '발사 충격량',       16.0,  0.5, 30,  0.1,  '파워 100%일 때의 수평 충격량. 수평 이동 세기.'],
   ['vAssist',     '수직 보조 충격량',  0.38, 0,   1.5, 0.01, '수평 충격량 대비 위쪽 충격 비율. 앞부분 들림과 도약을 돕는다.'],
   ['spinAssist',  '회전 보조 강도',    0.26,  -1,  1,   0.01, '추가 회전 충격. 양수면 앞이 들리는 쪽, 음수면 앞으로 구르는 쪽.'],
   ['hitBack',     '충격 위치(뒤쪽)',   0.32,  0,   1,   0.01, '무게중심에서 발사 반대쪽으로 얼마나 떨어진 곳을 치는가. 1이면 뒤끝.'],
@@ -55,11 +70,11 @@ export function validateSettings(input) {
 }
 
 // 기본 배치: 서로 마주 보고 15cm 떨어져 있다. q는 y축 회전(라디안)으로 준다.
-export function initialLayout() {
+export function initialLayout(types = ['normal', 'normal']) {
   return {
     bodies: [
-      { p: [-0.75, GEOM.hy + 0.002, 0.04], yaw: 0.10 },
-      { p: [0.75, GEOM.hy + 0.002, -0.04], yaw: Math.PI - 0.14 },
+      { p: [-0.75, TYPES[types[0]].dims[1] + 0.002, 0.04], yaw: 0.10, type: types[0] },
+      { p: [0.75, TYPES[types[1]].dims[1] + 0.002, -0.04], yaw: Math.PI - 0.14, type: types[1] },
     ],
     aim: [0, Math.PI],          // 각 플레이어의 기본 발사 방향(상대 쪽)
   };

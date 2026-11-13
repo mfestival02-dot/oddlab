@@ -1,12 +1,13 @@
 // 그리기: 책상, 지우개, 방향 화살표, 카메라, 디버그 표시
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { GEOM } from './config.js';
+import { GEOM, TYPES } from './config.js';
+import { Fx } from './fx.js';
 import { PHASE } from './game.js';
 
 export const PLAYER = [
-  { name: '1P', color: 0x2f7fe0, css: '#2f7fe0', label: '말랑' },
-  { name: '2P', color: 0xf0603f, css: '#f0603f', label: '쫀득' },
+  { name: '1P', color: 0x2f7fe0, css: '#2f7fe0', rubber: 0xf3f5f8 },
+  { name: '2P', color: 0xf0603f, css: '#f0603f', rubber: 0xfbefe6 },
 ];
 const FONT = '"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif';
 function canvasTex(w, h, draw) {
@@ -63,12 +64,12 @@ function woodTexture() {
     g.fillStyle = e; g.fillRect(0, 0, w, h);
   });
 }
-function sleeveTexture(pl) {
+function sleeveTexture(pl, label) {
   return canvasTex(512, 256, (g, w, h) => {
     g.fillStyle = pl.css; g.fillRect(0, 0, w, h);
     g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(0, 24, w, 16); g.fillRect(0, h - 40, w, 16);
     g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = `900 104px ${FONT}`; g.fillText(pl.label, w / 2 + 44, h / 2 + 6);
+    g.font = `900 104px ${FONT}`; g.fillText(label, w / 2 + 44, h / 2 + 6);
     g.beginPath(); g.arc(92, h / 2, 54, 0, 7); g.fill();
     g.fillStyle = pl.css; g.font = `900 58px ${FONT}`; g.fillText(pl.name, 92, h / 2 + 4);
   });
@@ -95,7 +96,11 @@ export class View {
     scene.add(sun, sun.target);
 
     this._desk(); this._room();
-    this.erasers = PLAYER.map((pl, i) => this._eraser(pl, i));
+    this.erasers = []; this.wires = [];
+    this.fx = new Fx(scene);
+    this.squash = [{ s: 0, v: 0 }, { s: 0, v: 0 }];
+    this.hop = null;                         // 이긴 지우개가 폴짝거린다
+    this.cine = { zoom: 0, zoomT: 0, trauma: 0, pulse: 0, fall: null, time: 0 };
     // 방향 화살표와 차례 표시
     const sh = new THREE.Shape();
     sh.moveTo(0, -0.035); sh.lineTo(0.62, -0.035); sh.lineTo(0.62, -0.1); sh.lineTo(0.84, 0); sh.lineTo(0.62, 0.1); sh.lineTo(0.62, 0.035); sh.lineTo(0, 0.035); sh.closePath();
@@ -106,14 +111,11 @@ export class View {
     this.ring.rotation.x = -Math.PI / 2; scene.add(this.ring);
     // 디버그: 충돌체 윤곽과 접촉 법선
     this.debug = false;
-    this.wires = this.erasers.map(() => {
-      const w = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(GEOM.hx * 2, GEOM.hy * 2, GEOM.hz * 2)), new THREE.LineBasicMaterial({ color: 0x00ff88, depthTest: false }));
-      w.visible = false; w.renderOrder = 30; scene.add(w); return w;
-    });
     this.normalArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 0.5, 0xff00aa);
     this.normalArrow.visible = false; scene.add(this.normalArrow);
 
     this.cam = { az: Math.PI, pos: new THREE.Vector3(-3, 2, 0), look: new THREE.Vector3(), init: false };
+    this.setTypes(['normal', 'normal']);
     this.resize();
     addEventListener('resize', () => this.resize());
   }
@@ -122,8 +124,10 @@ export class View {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     // 세로로 긴 화면에서도 책상 폭이 들어오도록 시야각을 넓힌다
-    this.camera.fov = w / h < 1 ? 62 : w / h < 1.4 ? 50 : 42;
+    this.baseFov = w / h < 1 ? 62 : w / h < 1.4 ? 50 : 42;
+    this.camera.fov = this.baseFov;
     this.camera.updateProjectionMatrix();
+    this.fx.setScale(h * this.renderer.getPixelRatio() / (2 * Math.tan((this.baseFov * Math.PI) / 360)));
   }
 
   _desk() {
@@ -181,24 +185,50 @@ export class View {
       s.add(d, c);
     }
   }
-  _eraser(pl, i) {
-    const g = new THREE.Group();
-    const rubber = new THREE.Mesh(new RoundedBoxGeometry(GEOM.hx * 2, GEOM.hy * 2, GEOM.hz * 2, 4, 0.02),
-      new THREE.MeshStandardMaterial({ color: i ? 0xfbefe6 : 0xf3f5f8, roughness: 0.82 }));
-    const tex = sleeveTexture(pl);
+  // 지우개 종류가 바뀌면 모양을 다시 만든다
+  setTypes(types) {
+    if (this.types && this.types[0] === types[0] && this.types[1] === types[1]) return;
+    this.types = [...types];
+    for (const o of [...this.erasers, ...this.wires]) this.scene.remove(o);
+    this.erasers = types.map((t, i) => this._eraser(PLAYER[i], TYPES[t]));
+    this.wires = types.map((t) => {
+      const [hx, hy, hz] = TYPES[t].dims;
+      const w = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2)), new THREE.LineBasicMaterial({ color: 0x00ff88, depthTest: false }));
+      w.visible = false; w.renderOrder = 30; this.scene.add(w); return w;
+    });
+  }
+  _eraser(pl, T) {
+    const [hx, hy, hz] = T.dims;
+    const g = new THREE.Group(), inner = new THREE.Group();
+    const rubber = new THREE.Mesh(new RoundedBoxGeometry(hx * 2, hy * 2, hz * 2, 4, Math.min(0.02, hy * 0.4)),
+      new THREE.MeshStandardMaterial({ color: pl.rubber, roughness: 0.82 }));
+    const tex = sleeveTexture(pl, T.name);
     const paper = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 }), plain = new THREE.MeshStandardMaterial({ color: pl.color, roughness: 0.7 });
-    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(GEOM.hx * 2 * 0.62, GEOM.hy * 2 + 0.006, GEOM.hz * 2 + 0.006), [plain, plain, paper, paper, plain, plain]);
-    sleeve.position.x = -GEOM.hx * 0.2;
+    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(hx * 2 * 0.62, hy * 2 + 0.006, hz * 2 + 0.006), [plain, plain, paper, paper, plain, plain]);
+    sleeve.position.x = -hx * 0.2;
     rubber.castShadow = sleeve.castShadow = true; rubber.receiveShadow = sleeve.receiveShadow = true;
-    g.add(rubber, sleeve);
+    inner.add(rubber, sleeve); g.add(inner);
+    g.userData.inner = inner;
     this.scene.add(g);
     return g;
   }
+  kick(i, amount) { this.squash[i].v += amount * 22; }           // 눌렸다 튕겨 돌아오는 탄력
+  shake(a) { this.cine.trauma = Math.min(1, this.cine.trauma + a); }
+  zoomIn(sec) { this.cine.zoomT = Math.max(this.cine.zoomT, sec); }
 
   // 화면 갱신. bodies는 보간된 자세 목록.
   update(game, bodies, dt) {
+    this.setTypes(game.types);
+    const C = this.cine; C.time += dt;
     bodies.forEach((b, i) => {
-      this.erasers[i].position.set(b.p[0], b.p[1], b.p[2]);
+      // 찌그러짐: 스프링으로 흔들리다 가라앉는다(그리기만, 물리와 무관)
+      const q = this.squash[i];
+      q.v += (-340 * q.s - 15 * q.v) * dt; q.s = Math.max(-0.4, Math.min(0.45, q.s + q.v * dt));
+      const inner = this.erasers[i].userData.inner;
+      inner.scale.set(1 + q.s * 0.55, 1 - q.s, 1 + q.s * 0.55);
+      let lift = 0;
+      if (this.hop && this.hop.i === i) { this.hop.t += dt; const u = this.hop.t; lift = Math.abs(Math.sin(u * 7.5)) * 0.13 * Math.exp(-u * 0.9); inner.scale.y *= 1 + Math.sin(u * 15) * 0.1 * Math.exp(-u * 0.9); }
+      this.erasers[i].position.set(b.p[0], b.p[1] + lift, b.p[2]);
       this.erasers[i].quaternion.set(b.q.x, b.q.y, b.q.z, b.q.w);
       this.wires[i].visible = this.debug;
       this.wires[i].position.copy(this.erasers[i].position); this.wires[i].quaternion.copy(this.erasers[i].quaternion);
@@ -217,33 +247,58 @@ export class View {
     }
     this.normalArrow.visible = this.debug && game.info.touching;
     if (this.normalArrow.visible) this.normalArrow.position.set((bodies[0].p[0] + bodies[1].p[0]) / 2, Math.max(bodies[0].p[1], bodies[1].p[1]), (bodies[0].p[2] + bodies[1].p[2]) / 2);
+    this.fx.update(dt);
     this._camera(game, bodies, dt);
     this.renderer.render(this.scene, this.camera);
   }
   _camera(game, bodies, dt) {
-    const C = this.cam, me = bodies[game.player], op = bodies[1 - game.player];
+    const C = this.cam, K = this.cine, me = bodies[game.player], op = bodies[1 - game.player];
     const on = (b) => b.p[1] > GEOM.fallY;
     // 시점 방향: 현재 플레이어 뒤에서 상대 쪽을 본다. 발사 뒤에는 방향을 바꾸지 않는다.
+    let swing = 0;
     if (game.phase === PHASE.AIM && on(me) && on(op)) {
       const want = Math.atan2(op.p[2] - me.p[2], op.p[0] - me.p[0]);
-      let d = ((want - C.az + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
-      C.az += d * (C.init ? 1 - Math.exp(-3.2 * dt) : 1);
+      const d = ((want - C.az + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+      C.az += d * (C.init ? 1 - Math.exp(-3.0 * dt) : 1);
+      swing = Math.abs(d);                                  // 차례가 바뀌어 책상을 돌아 넘어가는 중
     }
     const pts = [me, op].filter(on);
     const cx = pts.length ? pts.reduce((s, b) => s + b.p[0], 0) / pts.length : 0, cz = pts.length ? pts.reduce((s, b) => s + b.p[2], 0) / pts.length : 0;
     const spread = pts.length === 2 ? Math.hypot(me.p[0] - op.p[0], me.p[2] - op.p[2]) : 1.5;
     const aiming = game.phase === PHASE.AIM || game.phase === PHASE.POWER;
     const narrow = this.camera.aspect < 1 ? 1.35 : 1;
-    const dist = (aiming ? 2.3 + spread * 0.55 : 2.8 + spread * 0.75) * narrow;
+    // 느린 화면일 때는 두 지우개 쪽으로 바짝 다가간다
+    K.zoomT = Math.max(0, K.zoomT - dt);
+    K.zoom += ((K.zoomT > 0 ? 1 : 0) - K.zoom) * (1 - Math.exp(-(K.zoomT > 0 ? 9 : 4) * dt));
+    const dist = (aiming ? 2.3 + spread * 0.55 : 2.8 + spread * 0.75) * narrow * (1 - 0.42 * K.zoom);
     const fx = Math.cos(C.az), fz = Math.sin(C.az);
     const focus = aiming && on(me) ? [me.p[0] * 0.55 + cx * 0.45, me.p[2] * 0.55 + cz * 0.45] : [cx, cz];
-    const wantPos = new THREE.Vector3(focus[0] - fx * dist, 0.9 + dist * 0.5, focus[1] - fz * dist);
-    const wantLook = new THREE.Vector3(focus[0] + fx * 0.35, 0.05, focus[1] + fz * 0.35);
-    const k = C.init ? 1 - Math.exp(-(aiming ? 3.5 : 2.2) * dt) : 1;
+    const wantPos = new THREE.Vector3(focus[0] - fx * dist, 0.9 + dist * (0.5 - 0.14 * K.zoom) + swing * 0.55, focus[1] - fz * dist);
+    const wantLook = new THREE.Vector3(focus[0] + fx * 0.35 * (1 - K.zoom), 0.05 + 0.1 * K.zoom, focus[1] + fz * 0.35 * (1 - K.zoom));
+    // 떨어지는 지우개: 책상 가장자리에서 내려다보며 따라간다
+    if (K.fall) {
+      K.fall.t += dt;
+      const f = bodies[K.fall.i].p;
+      if (K.fall.t < 2.6 && f[1] < 0.2) {
+        const ex = Math.max(-GEOM.desk.hx, Math.min(GEOM.desk.hx, f[0])), ez = Math.max(-GEOM.desk.hz, Math.min(GEOM.desk.hz, f[2]));
+        wantPos.set(ex * 0.72 - fx * 0.6, 2.3, ez * 0.72 - fz * 0.6);
+        wantLook.set(f[0], f[1], f[2]);
+      } else if (K.fall.t >= 2.6) K.fall = null;
+    }
+    const k = C.init ? 1 - Math.exp(-(K.fall ? 4.5 : K.zoomT > 0 ? 7 : aiming ? 3.5 : 2.2) * dt) : 1;
     C.pos.lerp(wantPos, k); C.look.lerp(wantLook, k); C.init = true;
-    this.camera.position.copy(C.pos); this.camera.lookAt(C.look);
+    this.camera.position.copy(C.pos);
+    // 흔들림: 충격이 클수록 세게, 금방 가라앉는다
+    K.trauma = Math.max(0, K.trauma - dt * 1.9);
+    if (K.trauma > 0) {
+      const a = K.trauma * K.trauma * 0.075, t = K.time * 43;
+      this.camera.position.x += Math.sin(t) * a; this.camera.position.y += Math.sin(t * 1.31 + 1) * a; this.camera.position.z += Math.sin(t * 0.83 + 2) * a;
+    }
+    this.camera.lookAt(C.look);
+    const fov = this.baseFov - 5 * K.zoom - K.pulse * 1.3;
+    if (Math.abs(fov - this.camera.fov) > 0.01) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
   }
-  resetCamera() { this.cam.init = false; }
+  resetCamera() { this.cam.init = false; this.cine.fall = null; this.cine.zoomT = 0; this.cine.zoom = 0; this.hop = null; this.squash.forEach((q) => { q.s = q.v = 0; }); }
   // 3D 위치가 화면의 어디인지(걸침 표시용)
   project(x, y, z) {
     const v = new THREE.Vector3(x, y, z).project(this.camera);
