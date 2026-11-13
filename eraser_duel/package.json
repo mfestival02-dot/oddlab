@@ -1,0 +1,15 @@
+{
+  "name": "eraser-duel",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --serve",
+    "test": "node test/verify.mjs"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "0.14.0",
+    "esbuild": "^0.25.0",
+    "three": "0.170.0"
+  }
+}
