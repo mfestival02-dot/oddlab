@@ -5,7 +5,10 @@ import http from 'http';
 async function build() {
   const r = await esbuild.build({ entryPoints: ['src/main.js'], bundle: true, minify: true, format: 'iife', write: false, target: 'es2020', legalComments: 'none' });
   const js = r.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-  const html = fs.readFileSync('src/index.html', 'utf8').replace('/*BUNDLE*/', () => js);
+  // 글꼴은 파일 안에 넣어 한 파일로도 열리게 한다
+  const face = (file, weight) => `@font-face{font-family:"Gaegu";font-weight:${weight};font-display:swap;src:url(data:font/woff2;base64,${fs.readFileSync(file).toString('base64')}) format("woff2");}`;
+  const fonts = face('assets/gaegu-regular.woff2', 400) + face('assets/gaegu-bold.woff2', 700);
+  const html = fs.readFileSync('src/index.html', 'utf8').replace('/*FONTS*/', () => fonts).replace('/*BUNDLE*/', () => js);
   fs.mkdirSync('dist', { recursive: true });
   fs.writeFileSync('dist/index.html', html);
   console.log('dist/index.html', (html.length / 1024 / 1024).toFixed(1) + 'MB');

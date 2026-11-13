@@ -13,8 +13,15 @@ const out = path.join(__dirname, '..', 'shots');
   await p.goto('file://' + path.join(__dirname, '..', 'dist', 'index.html'));
   await p.waitForFunction(() => window.__game);
   const st = () => p.evaluate(() => { const { game, input } = __game; return { phase: game.phase, player: game.player, aim: game.aim.slice(), gauge: game.gauge.value, launches: input.launches, result: game.result, y0: game.curr[0].p[1] }; });
+  // 게이지가 원하는 구간에 들어온 바로 그 프레임에 화면 버튼을 누른다(느린 환경에서도 같은 조작이 되도록)
+  const clickAt = (lo, hi) => p.evaluate(([lo, hi]) => new Promise((res) => { const f = () => { const v = __game.game.gauge.value; if (__game.game.phase === 'power' && v > lo && v < hi) { document.getElementById('fire').click(); res(v); } else requestAnimationFrame(f); }; f(); }), [lo, hi]);
   const log = (n, ok, d = '') => console.log(`${ok ? '통과' : '실패'}  ${n}${d ? '  — ' + d : ''}`);
-  await p.waitForTimeout(1200);
+  await p.waitForTimeout(800);
+  await p.screenshot({ path: path.join(out, '00_start.png') });
+  await p.keyboard.press('Space'); await p.waitForTimeout(150);
+  let s0 = await st();
+  log('B0. 시작 표지에서 Space는 게임을 시작만 하고 게이지를 건드리지 않는다', s0.phase === 'aim' && (await p.isHidden('#start')));
+  await p.waitForTimeout(1700);
   // 프레임률 측정
   const fps = await p.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; performance.now() - t0 < 1500 ? requestAnimationFrame(f) : res(n / 1.5); }; requestAnimationFrame(f); }));
   console.log(`      이 환경의 그리기 속도: 약 ${fps.toFixed(0)}fps`);
@@ -36,7 +43,7 @@ const out = path.join(__dirname, '..', 'shots');
   await p.keyboard.up('Space');
   await p.screenshot({ path: path.join(out, '02_gauge.png') });
   // 왕복 게이지를 보고 55% 근처에서 튕긴다(일반 조작)
-  await p.waitForFunction(() => { const v = __game.game.gauge.value; return v > 0.52 && v < 0.6; });
+  await p.waitForFunction(() => { const v = __game.game.gauge.value; return v > 0.5 && v < 0.58; }, null, { polling: 'raf' });
   await p.keyboard.press('Space');
   c = await st();
   const usedPower = await p.evaluate(() => __game.game.shotPower);
@@ -56,14 +63,14 @@ const out = path.join(__dirname, '..', 'shots');
   await p.click('#again'); await p.waitForTimeout(900);
   c = await st();
   log('B8. 다시 시작하면 1P 조준 상태로 돌아간다', c.phase === 'aim' && c.player === 0 && c.result === null && c.launches === 1);
-  await p.click('#fire'); await p.waitForFunction(() => { const v = __game.game.gauge.value; return v > 0.18 && v < 0.26; }); await p.click('#fire');
+  await p.click('#fire'); await clickAt(0.2, 0.34);
   await p.waitForFunction(() => __game.game.phase !== 'physics'); await p.waitForTimeout(1200);
   c = await st();
   log('B9. 약하게 튕기면 승패 없이 2P 차례로 넘어간다(화면 버튼 조작)', c.phase === 'aim' && c.player === 1, `파워 ${((await p.evaluate(() => __game.game.shotPower)) * 100).toFixed(0)}%`);
   await p.screenshot({ path: path.join(out, '05_p2_turn.png') });
   // 2P가 빈 쪽으로 방향을 돌려 아주 세게 → 책상 밖으로
   await p.keyboard.down('KeyD'); await p.waitForFunction((t) => __game.game.aim[1] >= t, (await st()).aim[1] + 0.9); await p.keyboard.up('KeyD');
-  await p.keyboard.press('Space'); await p.waitForFunction(() => __game.game.gauge.value > 0.93); await p.keyboard.press('Space');
+  await p.keyboard.press('Space'); await clickAt(0.9, 1.01);
   await p.waitForFunction(() => __game.game.phase !== 'physics'); await p.waitForTimeout(600);
   c = await st();
   log('B10. 2P가 너무 세게 튕기면 떨어져서 1P가 이긴다', c.phase === 'result' && c.result.reason === 'fell' && c.result.winner === 0, `${await p.textContent('#resultTitle')} / ${await p.textContent('#resultWhy')}`);
@@ -110,7 +117,7 @@ const out = path.join(__dirname, '..', 'shots');
   // 좁은 화면
   await p.click('#devBtn');
   await p.setViewportSize({ width: 420, height: 760 }); await p.waitForTimeout(900);
-  const fit = await p.evaluate(() => ['turn', 'status', 'bar', 'devBtn'].every((id) => { const r = document.getElementById(id).getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1; }));
+  const fit = await p.evaluate(() => ['tag0', 'tag1', 'bar', 'devBtn', 'mute'].every((id) => { const r = document.getElementById(id).getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1; }));
   log('B16. 좁은 화면에서도 조작 버튼과 정보가 화면 안에 있다', fit);
   await p.screenshot({ path: path.join(out, '08_narrow.png') });
   log('B17. 브라우저 오류가 없다', errs.length === 0, errs.slice(0, 3).join(' | '));

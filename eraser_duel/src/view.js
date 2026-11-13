@@ -130,16 +130,33 @@ export class View {
     const D = GEOM.desk, s = this.scene;
     const wood = woodTexture();
     const side = new THREE.MeshStandardMaterial({ color: 0xc08d52, roughness: 0.65 });
-    const topMat = new THREE.MeshStandardMaterial({ map: wood, roughness: 0.55 });
-    const top = new THREE.Mesh(new RoundedBoxGeometry(D.hx * 2, D.thick, D.hz * 2, 3, 0.04), [side, side, topMat, side, side, side]);
+    const top = new THREE.Mesh(new RoundedBoxGeometry(D.hx * 2, D.thick, D.hz * 2, 3, 0.04), side);
     top.position.y = -D.thick / 2; top.receiveShadow = true; top.castShadow = true;
-    s.add(top);
+    // 윗면 그림은 따로 얹어서 낙서와 연필 홈의 위치가 정확히 맞게 한다(그림 위쪽이 -z)
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(D.hx * 2 - 0.07, D.hz * 2 - 0.07), new THREE.MeshStandardMaterial({ map: wood, roughness: 0.55 }));
+    face.rotation.x = -Math.PI / 2; face.position.y = 0.0012; face.receiveShadow = true;
+    s.add(top, face);
     const metal = new THREE.MeshStandardMaterial({ color: 0x6f7780, roughness: 0.4, metalness: 0.7 });
     for (const x of [-1, 1]) for (const z of [-1, 1]) {
       const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, -GEOM.floorY, 12), metal);
       leg.position.set(x * (D.hx - 0.3), GEOM.floorY / 2 - D.thick, z * (D.hz - 0.3));
       s.add(leg);
     }
+    // 연필 홈에 놓인 연필(장식, 충돌 없음)
+    const pen = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 1.5, 6), new THREE.MeshStandardMaterial({ color: 0xf2c230, roughness: 0.5 }));
+    const tipWood = new THREE.Mesh(new THREE.ConeGeometry(0.034, 0.13, 6), new THREE.MeshStandardMaterial({ color: 0xe6c79c, roughness: 0.7 }));
+    tipWood.position.y = 0.815;
+    const lead = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.045, 6), new THREE.MeshStandardMaterial({ color: 0x33302e, roughness: 0.4 }));
+    lead.position.y = 0.862;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.09, 12), new THREE.MeshStandardMaterial({ color: 0xb9bcc2, roughness: 0.3, metalness: 0.8 }));
+    band.position.y = -0.79;
+    const rub = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.033, 0.09, 12), new THREE.MeshStandardMaterial({ color: 0xf09aa2, roughness: 0.8 }));
+    rub.position.y = -0.88;
+    pen.add(body, tipWood, lead, band, rub);
+    pen.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    pen.rotation.set(0, 0.04, Math.PI / 2); pen.position.set(0.5, 0.024, -D.hz + (59 / 1024) * D.hz * 2);
+    s.add(pen);
     const shelf = new THREE.Mesh(new THREE.BoxGeometry(D.hx * 2 - 0.5, 0.06, D.hz * 2 - 0.5), metal);
     shelf.position.y = -1.3; s.add(shelf);
   }
@@ -227,4 +244,9 @@ export class View {
     this.camera.position.copy(C.pos); this.camera.lookAt(C.look);
   }
   resetCamera() { this.cam.init = false; }
+  // 3D 위치가 화면의 어디인지(걸침 표시용)
+  project(x, y, z) {
+    const v = new THREE.Vector3(x, y, z).project(this.camera);
+    return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight };
+  }
 }

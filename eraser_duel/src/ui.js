@@ -8,14 +8,25 @@ import { initialLayout } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 const deg = (r) => (r * 180) / Math.PI, rad = (d) => (d * Math.PI) / 180;
+// 값이 바뀔 때만 화면에 쓴다(매 프레임 다시 쓰면 느려진다)
+const memo = new Map();
+const put = (id, key, val, apply) => { const k = id + key; if (memo.get(k) === val) return; memo.set(k, val); apply($(id), val); };
+const text = (id, v) => put(id, 't', v, (e, x) => { e.textContent = x; });
 const el = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); kids.forEach((k) => e.append(k)); return e; };
 
 export class UI {
-  constructor(game, view, input) {
-    this.game = game; this.view = view; this.input = input;
+  constructor(game, view, input, sfx) {
+    this.game = game; this.view = view; this.input = input; this.sfx = sfx;
+    this.started = false; this.shownResult = null; this.lastTick = -1;
     $('fire').addEventListener('click', () => input.press());
-    $('again').addEventListener('click', () => input.restart());
+    $('again').addEventListener('click', () => { sfx.click(); input.restart(); });
     $('retryBtn').addEventListener('click', () => { game.retryTurn(); input.clear(); });
+    $('startBtn').addEventListener('click', () => this.start());
+    $('mute').addEventListener('click', () => {
+      sfx.init(); sfx.setMuted(!sfx.muted);
+      $('mute').textContent = sfx.muted ? '소리 끔' : '소리 켬'; $('mute').setAttribute('aria-pressed', String(sfx.muted));
+      sfx.click();
+    });
     for (const [id, dir] of [['left', -1], ['right', 1]]) {
       const b = $(id);
       const on = (e) => { input.hold = dir; e.preventDefault(); };
@@ -25,14 +36,37 @@ export class UI {
       b.addEventListener('keydown', (e) => { if (e.key === 'Enter') { game.turn(dir, 0.05); } });
     }
     $('devBtn').addEventListener('click', () => this.toggleDev());
+    $('gaugeNums').innerHTML = Array.from({ length: 9 }, (_, i) => `<i style="left:${i * 10}%">${i}</i>`).join('');
+    const C = 2 * Math.PI * 62;
+    $('perchRing').style.strokeDasharray = C; this.perchC = C;
     this._buildDev();
+  }
+  start() {
+    if (this.started) return;
+    this.started = true;
+    $('start').hidden = true;
+    this.sfx.init(); this.sfx.bell();
+    this.banner('1P 차례!', '파랑 지우개부터');
+  }
+  banner(text, sub = '') {
+    const b = $('banner');
+    $('bannerText').textContent = text; $('bannerSub').textContent = sub;
+    b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+  }
+  stampSvg(color, top, mid) {
+    return `<g filter="url(#ink)" fill="none" stroke="${color}">
+      <circle cx="80" cy="80" r="72" stroke-width="7"/><circle cx="80" cy="80" r="61" stroke-width="3"/>
+      <path id="arcTop" d="M 26 80 A 54 54 0 0 1 134 80" stroke="none"/>
+      <text font-family="Gaegu, sans-serif" font-weight="700" font-size="27" fill="${color}" stroke="none" text-anchor="middle"><textPath href="#arcTop" startOffset="50%">${top}</textPath></text>
+      <text x="80" y="104" font-family="Gaegu, sans-serif" font-weight="700" font-size="46" fill="${color}" stroke="none" text-anchor="middle">${mid}</text>
+      <path d="M 44 118 L 116 118" stroke-width="3"/><path d="M 56 127 L 104 127" stroke-width="2"/>
+    </g>`;
   }
   toggleDev(open = $('dev').hidden) {
     $('dev').hidden = !open;
     document.body.classList.toggle('dev-open', open);
     $('devBtn').setAttribute('aria-expanded', String(open));
     $('devBtn').textContent = open ? '패널 닫기' : '개발자 패널';
-    $('devBtn').style.right = open ? `calc(min(380px, 100vw) + 14px)` : '14px';
     this.view.debug = open && this.dbgDraw.checked;
   }
 
@@ -40,7 +74,7 @@ export class UI {
   _buildDev() {
     const g = this.game, root = $('dev');
     this.inputs = {}; this.rows = {};
-    root.append(el('div', { className: 'head' }, [el('b', { textContent: '개발자 패널' }), el('button', { textContent: '닫기', onclick: () => this.toggleDev(false) })]));
+    root.append(el('div', { className: 'head' }, [el('b', { textContent: '개발자 패널' }), el('button', { className: 'btn small', textContent: '닫기', onclick: () => this.toggleDev(false) })]));
 
     root.append(el('h3', { textContent: `물리 설정 (${APPLY_NOTE})` }));
     for (const [k, name, , min, max, step, desc] of SETTING_DEFS) {
@@ -62,11 +96,11 @@ export class UI {
     const file = el('input', { type: 'file', accept: '.json,application/json', hidden: true });
     file.addEventListener('change', async () => { if (file.files[0]) { io.value = await file.files[0].text(); this.importJson(io.value); file.value = ''; } });
     root.append(el('div', { className: 'btns' }, [
-      el('button', { textContent: '기본값으로', onclick: () => { this.setPending(defaultSettings()); this.setMsg('기본값으로 되돌렸습니다. 다음 발사부터 적용됩니다.'); } }),
-      el('button', { textContent: 'JSON 복사', onclick: () => this.copyJson(io) }),
-      el('button', { textContent: 'JSON 내려받기', onclick: () => this.download() }),
-      el('button', { textContent: '가져오기', onclick: () => this.importJson(io.value) }),
-      el('button', { textContent: '파일에서 가져오기', onclick: () => file.click() }),
+      el('button', { className: 'btn small', textContent: '기본값으로', onclick: () => { this.setPending(defaultSettings()); this.setMsg('기본값으로 되돌렸습니다. 다음 발사부터 적용됩니다.'); } }),
+      el('button', { className: 'btn small', textContent: 'JSON 복사', onclick: () => this.copyJson(io) }),
+      el('button', { className: 'btn small', textContent: 'JSON 내려받기', onclick: () => this.download() }),
+      el('button', { className: 'btn small', textContent: '가져오기', onclick: () => this.importJson(io.value) }),
+      el('button', { className: 'btn small', textContent: '파일에서 가져오기', onclick: () => file.click() }),
     ]), io, file, this.msg);
 
     root.append(el('h3', { textContent: '발사 재현' }));
@@ -77,26 +111,26 @@ export class UI {
       el('div', {}, [el('label', { htmlFor: 'dbgPower', textContent: '파워(%)' }), this.dPower]),
     ]));
     root.append(el('div', { className: 'btns' }, [
-      el('button', { textContent: '지금 방향 가져오기', onclick: () => { this.dAngle.value = deg(g.aim[g.player]).toFixed(1); } }),
-      el('button', { id: 'dbgFire', textContent: '이 값으로 발사', onclick: () => this.debugFire() }),
+      el('button', { className: 'btn small', textContent: '지금 방향 가져오기', onclick: () => { this.dAngle.value = deg(g.aim[g.player]).toFixed(1); } }),
+      el('button', { className: 'btn small', id: 'dbgFire', textContent: '이 값으로 발사', onclick: () => this.debugFire() }),
     ]));
     root.append(el('div', { className: 'btns' }, [
-      el('button', { id: 'dbgSave', textContent: '발사 전 상태 저장', onclick: () => {
+      el('button', { className: 'btn small', id: 'dbgSave', textContent: '발사 전 상태 저장', onclick: () => {
         if (g.phase !== PHASE.AIM) return this.setMsg2('조준 중일 때만 저장할 수 있습니다.', true);
         g.savedShot = g.snapshot(rad(Number(this.dAngle.value) || 0), (Number(this.dPower.value) || 0) / 100);
         this.setMsg2('지금 상태를 저장했습니다(방향·파워·설정 포함).');
       } }),
-      el('button', { id: 'dbgRestore', textContent: '발사 전 상태 복원', onclick: () => {
+      el('button', { className: 'btn small', id: 'dbgRestore', textContent: '발사 전 상태 복원', onclick: () => {
         const s = g.savedShot || g.lastShot;
         if (!s) return this.setMsg2('저장된 상태가 없습니다.', true);
         g.restore(s); this.afterRestore(s); this.setMsg2(g.savedShot ? '저장한 상태로 되돌렸습니다.' : '마지막 발사 직전으로 되돌렸습니다.');
       } }),
-      el('button', { id: 'dbgReplay', textContent: '같은 조건으로 다시 발사', onclick: () => {
+      el('button', { className: 'btn small', id: 'dbgReplay', textContent: '같은 조건으로 다시 발사', onclick: () => {
         if (!g.lastShot) return this.setMsg2('아직 발사한 적이 없습니다.', true);
         const s = g.lastShot; g.replayLast(); this.afterRestore(s, false); this.input.clear(); this.setMsg2('마지막 발사를 같은 조건으로 다시 실행했습니다.');
       } }),
-      el('button', { id: 'dbgPreset', textContent: '성공 재현 프리셋 불러오기', onclick: () => { this.loadPreset(); this.setMsg2('프리셋을 불러왔습니다. [이 값으로 발사]를 누르면 1P가 올라탑니다.'); } }),
-      el('button', { id: 'dbgPresetFire', textContent: '프리셋 바로 발사', onclick: () => { this.loadPreset(); this.debugFire(); } }),
+      el('button', { className: 'btn small', id: 'dbgPreset', textContent: '성공 재현 프리셋 불러오기', onclick: () => { this.loadPreset(); this.setMsg2('프리셋을 불러왔습니다. [이 값으로 발사]를 누르면 1P가 올라탑니다.'); } }),
+      el('button', { className: 'btn small', id: 'dbgPresetFire', textContent: '프리셋 바로 발사', onclick: () => { this.loadPreset(); this.debugFire(); } }),
     ]));
     this.msg2 = el('div');
     this.dbgDraw = el('input', { type: 'checkbox', id: 'dbgDraw' });
@@ -152,40 +186,66 @@ export class UI {
   }
 
   // ---------- 매 프레임 표시 ----------
-  update() {
-    const g = this.game, pl = PLAYER[g.player];
-    document.documentElement.style.setProperty('--p', pl.css);
-    $('turnText').textContent = g.phase === PHASE.RESULT ? '경기 끝' : `${pl.name} 차례`;
+  update(bodies) {
+    const g = this.game, pl = PLAYER[g.player], sfx = this.sfx;
+    put('turn', 'p', pl.css, (e, x) => document.documentElement.style.setProperty('--p', x));
+    const over = g.phase === PHASE.RESULT;
+    put('tag0', 'on', over ? g.result.winner === 0 : g.player === 0, (e, x) => e.classList.toggle('on', x));
+    put('tag1', 'on', over ? g.result.winner === 1 : g.player === 1, (e, x) => e.classList.toggle('on', x));
     const T = g.timers, S = g.applied;
     let main = '', sub = '';
-    if (g.phase === PHASE.AIM) { main = '방향을 정하고 게이지를 시작하세요'; sub = '상대 지우개 위에 올라타면 승리'; }
-    else if (g.phase === PHASE.POWER) { main = '원하는 세기에서 튕기세요'; sub = '너무 세면 책상 밖으로 날아갑니다'; }
+    const perching = g.phase === PHASE.PHYSICS && !g.sim.fallen[0] && !g.sim.fallen[1] && g.info.upper !== null && T.perch > 0.05;
+    if (g.phase === PHASE.AIM) { main = `${pl.name}: 방향을 정하고 게이지를 시작하세요`; sub = '상대 지우개 위에 올라타면 승리'; }
+    else if (g.phase === PHASE.POWER) { main = '눈금을 보고 튕기세요!'; sub = '빨간 칸은 책상 밖으로 날아갈 수 있어요'; }
     else if (g.phase === PHASE.PHYSICS) {
-      if (g.sim.fallen[0] || g.sim.fallen[1]) main = '떨어졌습니다…';
-      else if (g.info.upper !== null && T.perch > 0.05) { main = '걸침 확인 중…'; sub = `${PLAYER[g.info.upper].name}가 위 · ${T.perch.toFixed(1)} / ${S.perchHold.toFixed(1)}초`; }
+      if (g.sim.fallen[0] || g.sim.fallen[1]) main = '앗, 떨어졌다…';
+      else if (perching) { main = '걸침 확인 중…'; sub = `${PLAYER[g.info.upper].name}가 위 · ${T.perch.toFixed(1)} / ${S.perchHold.toFixed(1)}초`; }
       else main = '지우개가 멈추기를 기다리는 중';
-    } else main = '결과';
-    $('statusText').textContent = main; $('statusSub').textContent = sub;
+    } else main = '경기 끝';
+    text('statusText', main); text('statusSub', sub);
+    put('status', 'h', over, (e, x) => { e.hidden = x; });
 
-    const pw = g.phase === PHASE.POWER ? g.gauge.value : g.phase === PHASE.PHYSICS || g.phase === PHASE.RESULT ? (g.shotPower ?? 0) : 0;
-    $('gaugeFill').style.width = (pw * 100).toFixed(1) + '%';
-    $('gaugeNum').textContent = g.phase === PHASE.AIM ? '' : Math.round(pw * 100) + '%';
-    $('gauge').setAttribute('aria-valuenow', Math.round(pw * 100));
-    const canAct = g.phase === PHASE.AIM || g.phase === PHASE.POWER;
-    $('fire').disabled = !canAct;
-    $('fire').textContent = g.phase === PHASE.POWER ? '튕기기!' : '게이지 시작';
-    $('left').disabled = $('right').disabled = g.phase !== PHASE.AIM;
+    // 자 게이지
+    const pw = g.phase === PHASE.POWER ? g.gauge.value : g.phase === PHASE.PHYSICS || over ? (g.shotPower ?? 0) : 0;
+    if (this.gw === undefined) { this.gw = $('gauge').clientWidth; addEventListener('resize', () => { this.gw = $('gauge').clientWidth; memo.clear(); }); }
+    const px = (pw * this.gw + 2).toFixed(1);
+    put('gaugeFill', 'w', px, (e, x) => { e.style.width = x + 'px'; });
+    put('gaugePin', 'x', px, (e, x) => { e.style.transform = `translateX(${x}px)`; });
+    put('gaugeNum', 'x', px, (e, x) => { e.style.transform = `translateX(${x}px) translateX(12px)`; });
+    text('gaugeNum', g.phase === PHASE.AIM ? '' : Math.round(pw * 100) + '%');
+    put('gauge', 'a', Math.round(pw * 100), (e, x) => e.setAttribute('aria-valuenow', x));
+    if (g.phase === PHASE.POWER) { const tk = Math.floor(pw * 10); if (tk !== this.lastTick) { this.lastTick = tk; sfx.tick(); } }
+    const canAct = this.started && (g.phase === PHASE.AIM || g.phase === PHASE.POWER);
+    put('fire', 'd', !canAct, (e, x) => { e.disabled = x; });
+    text('fire', g.phase === PHASE.POWER ? '튕기기!' : '게이지 시작');
+    const noAim = !(this.started && g.phase === PHASE.AIM);
+    put('left', 'd', noAim, (e, x) => { e.disabled = x; }); put('right', 'd', noAim, (e, x) => { e.disabled = x; });
 
+    // 걸침 확인: 지우개 위에 색연필 동그라미가 차오른다
+    const ring = $('perch');
+    if (perching && bodies) {
+      const up = bodies[g.info.upper].p, sc = this.view.project(up[0], up[1], up[2]);
+      ring.hidden = false; ring.style.left = sc.x + 'px'; ring.style.top = sc.y + 'px';
+      $('perchRing').style.stroke = PLAYER[g.info.upper].css;
+      $('perchRing').style.strokeDashoffset = this.perchC * (1 - Math.min(1, T.perch / S.perchHold));
+    } else if (!ring.hidden) ring.hidden = true;
+
+    // 결과: 도장
     const res = $('result');
-    if (g.phase === PHASE.RESULT) {
-      const { winner, reason } = g.result;
-      $('resultTitle').textContent = winner === null ? '무승부' : `${PLAYER[winner].name} 승리!`;
-      $('resultTitle').style.color = winner === null ? '' : PLAYER[winner].css;
-      $('resultWhy').textContent = reason === 'perch' ? '상대 위에 올라탔습니다' : reason === 'fell' ? '상대가 책상 밖으로 떨어졌습니다' : '둘 다 책상 밖으로 떨어졌습니다';
-      if (res.hidden) { res.hidden = false; }
-    } else if (!res.hidden) res.hidden = true;
-    $('retry').hidden = !(g.stuck && g.phase === PHASE.PHYSICS);
-
+    if (over) {
+      if (this.shownResult !== g.result) {
+        this.shownResult = g.result;
+        const { winner, reason } = g.result;
+        $('resultTitle').textContent = winner === null ? '무승부' : `${PLAYER[winner].name} 승리!`;
+        $('resultTitle').style.color = winner === null ? '' : PLAYER[winner].css;
+        $('resultWhy').textContent = reason === 'perch' ? '상대 위에 올라탔습니다' : reason === 'fell' ? '상대가 책상 밖으로 떨어졌습니다' : '둘 다 책상 밖으로 떨어졌습니다';
+        $('stamp').innerHTML = winner === null ? this.stampSvg('#2f66c8', '다시 해 봐요', '비김') : this.stampSvg('#d9402f', '참 잘했어요', PLAYER[winner].name);
+        res.hidden = true; void res.offsetWidth; res.hidden = false;       // 도장 찍는 움직임을 다시 튼다
+        winner === null ? sfx.sad() : sfx.stamp();
+        if (winner !== null) setTimeout(() => sfx.bell(), 350);
+      }
+    } else { if (!res.hidden) res.hidden = true; this.shownResult = null; }
+    put('retry', 'h', !(g.stuck && g.phase === PHASE.PHYSICS), (e, x) => { e.hidden = x; });
     if (!$('dev').hidden) {
       for (const [k] of SETTING_DEFS) {
         const changed = g.pending[k] !== S[k];

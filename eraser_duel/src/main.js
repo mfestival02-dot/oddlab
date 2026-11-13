@@ -2,23 +2,41 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { Game, PHASE } from './game.js';
 import { View } from './view.js';
 import { UI } from './ui.js';
+import { Sfx } from './sound.js';
+import { PLAYER } from './view.js';
 
 async function main() {
   await RAPIER.init();
   const game = new Game(RAPIER);
   const view = new View(document.getElementById('app'));
+  const sfx = new Sfx();
+  let ui = null;
 
   // ---------- 입력: 길게 눌러도 한 번, 차례가 바뀌면 눌린 상태를 버린다 ----------
   const input = {
     hold: 0, left: false, right: false, spaceDown: false, launches: 0,
     clear() { this.hold = 0; this.left = this.right = false; },
-    press() { const r = game.press(); if (r === 'fire') this.launches++; return r; },
-    restart() { game.restart(); this.clear(); view.resetCamera(); },
+    press() {
+      if (!ui.started) return null;
+      sfx.init();
+      const r = game.press();
+      if (r === 'fire') this.launches++;
+      if (r === 'gauge') sfx.click();
+      return r;
+    },
+    restart() { if (!ui.started) return; game.restart(); this.clear(); view.resetCamera(); },
   };
-  game.onEvent = (type) => { if (type === 'turn' || type === 'restart' || type === 'restore' || type === 'result') input.clear(); };
+  game.onEvent = (type) => {
+    if (type === 'turn' || type === 'restart' || type === 'restore' || type === 'result') input.clear();
+    if (!ui || !ui.started) return;
+    if (type === 'fire') sfx.flick(game.shotPower ?? 0.5);
+    if (type === 'turn') { ui.banner(`${PLAYER[game.player].name} 차례!`); sfx.scratch(); }
+    if (type === 'restart') { ui.banner('1P 차례!', '다시 한 판'); sfx.scratch(); }
+  };
   const typing = (e) => { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); };
   addEventListener('keydown', (e) => {
     if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;       // 패널에 값을 넣는 동안에는 단축키를 쓰지 않는다
+    if (!ui.started) { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); input.spaceDown = true; ui.start(); } return; }
     if (e.code === 'Space') {
       e.preventDefault();
       if (e.repeat || input.spaceDown) return;                          // 길게 눌러 생기는 반복 입력은 무시
@@ -37,7 +55,8 @@ async function main() {
   });
   addEventListener('blur', () => { input.clear(); input.spaceDown = false; });
 
-  const ui = new UI(game, view, input);
+  ui = new UI(game, view, input, sfx);
+  const prevVy = [0, 0], wasFallen = [false, false];
 
   // ---------- 루프: 물리는 고정 간격, 그리기는 그 사이를 보간 ----------
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -60,12 +79,22 @@ async function main() {
       const p = game.prev[i];
       return { p: [lerp(p.p[0], c.p[0], alpha), lerp(p.p[1], c.p[1], alpha), lerp(p.p[2], c.p[2], alpha)], q: slerp(p.q, c.q, alpha) };
     });
+    // 부딪히는 소리: 떨어지던 속도가 갑자기 꺾이면 착지·충돌로 본다
+    if (ui.started && (game.phase === PHASE.PHYSICS || game.phase === PHASE.RESULT)) {
+      game.curr.forEach((c, i) => {
+        const vy = c.lv[1];
+        if (prevVy[i] < -0.9 && vy > prevVy[i] + 0.8 && c.p[1] > -0.5) sfx.thud(Math.min(1, -prevVy[i] / 7));
+        prevVy[i] = vy;
+        if (game.sim.fallen[i] && !wasFallen[i]) sfx.fall();
+        wasFallen[i] = game.sim.fallen[i];
+      });
+    } else { prevVy[0] = prevVy[1] = 0; wasFallen[0] = wasFallen[1] = false; }
     view.update(game, bodies, dt);
-    ui.update();
+    ui.update(bodies);
     requestAnimationFrame(frame);
   }
   document.getElementById('loading').remove();
-  window.__game = { game, input, view, ui, PHASE };
+  window.__game = { game, input, view, ui, sfx, PHASE };
   requestAnimationFrame(frame);
 }
 main().catch((e) => { console.error(e); document.getElementById('loading').textContent = '불러오지 못했습니다: ' + e.message; });
