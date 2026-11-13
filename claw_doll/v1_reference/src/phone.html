@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>숨는 스마트폰 - 시안 v1</title>
+<style>/*CSS*/
+html, body { background: #f2f7f4; }
+.overlay { background: rgba(236, 246, 241, .55); }
+.card .tag { background: #8f7cf0; }
+.card h1 { color: #3a3150; }
+.tips b { color: #7a62e8; }
+.btn { background: linear-gradient(180deg, #a596ff, #8a74f2); box-shadow: 0 6px 0 #6a54d6, 0 12px 24px rgba(106, 84, 214, .3); }
+.btn:active { box-shadow: 0 2px 0 #6a54d6; }
+#timer b { font-size: 26px; letter-spacing: .02em; }
+#notif { left: 50%; top: 16px; transform: translateX(-50%); display: none; text-align: center; min-width: 330px; background: #fff; border: 3px solid #ffb35c; }
+#notif .app { font-size: 13px; color: #a0907a; font-weight: 800; }
+#notif .msg { font-size: 17px; color: #3a3150; margin: 2px 0 4px; }
+#notif .cd { font-size: 30px; font-weight: 900; color: #ff8a2a; }
+#notif.go .cd { color: #ff4f6b; }
+#floorChip b { font-size: 18px; }
+#bat .bar, #sus .bar { width: 150px; }
+.bubble { font-size: 19px; }
+.bubble.alert { background: #fff1f3; color: #e0405e; }
+.bubble.alert::after { border-top-color: #fff1f3; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hud chip" id="timer" style="left:16px;top:16px"><small>주인 공부 끝까지</small><b id="timeTxt">01:30</b></div>
+<div class="hud chip" id="bat" style="left:16px;top:96px"><small>배터리 <span id="batTxt">55%</span></small><div class="bar"><i id="batBar"></i></div></div>
+<div class="hud chip" id="sus" style="right:16px;top:16px;text-align:right"><small>주인 의심도</small><div id="susLabel">평온</div><div class="bar" style="margin-top:6px;margin-left:auto"><i id="susBar"></i></div></div>
+<div class="hud chip" id="seen" style="right:16px;top:118px;text-align:right;display:none"><small>들키는 중</small><div class="bar" style="margin-left:auto"><i id="seenBar" style="background:#ff5a78"></i></div></div>
+<div class="hud chip" id="notif"><div class="app" id="notifApp">단톡방</div><div class="msg" id="notifMsg">메시지</div><div class="cd" id="notifCd">3</div></div>
+<div class="hud chip" id="floorChip" style="left:16px;bottom:16px"><small>지금 바닥</small><b id="floorTxt">러그</b> <span id="floorSub" style="font-size:13px;color:#8a7a92"></span></div>
+<div class="hud hint" id="hint"><span class="kbd">W</span> 부르르 앞으로 &nbsp; <span class="kbd">A</span><span class="kbd">D</span> 방향 &nbsp; <span class="kbd">S</span> 뒤로 &nbsp; <span class="kbd">Shift</span> 약진동 &nbsp; <span class="kbd">M</span> 소리 &nbsp; <span class="kbd">R</span> 다시</div>
+<div class="bubble" id="bubble"></div>
+
+<div class="overlay" id="start">
+  <div class="card">
+    <span class="tag">3D 시안 v1</span>
+    <h1>숨는 스마트폰</h1>
+    <p class="lead">내일이 시험인데 주인이 자꾸 나를 찾는다.<br>공부가 끝날 때까지 들키지 말고 숨어 있자!</p>
+    <div class="tips">
+      <div>나는 다리가 없다. <b>진동해야 움직이고</b>, 진동하면 소리가 난다</div>
+      <div><b>러그·양말·이불</b> 위는 조용하고, <b>나무 바닥</b>은 시끄럽다</div>
+      <div>알림이 오면 3초 뒤 <b>강제 진동</b>! 그 전에 푹신한 곳으로</div>
+      <div>배터리가 바닥나면 끝. <b>충전기</b>는 회복되지만 불빛이 눈에 띈다</div>
+    </div>
+    <div class="keys"><span class="kbd">W</span> 앞으로 · <span class="kbd">A</span><span class="kbd">D</span> 방향 · <span class="kbd">S</span> 뒤로 · <span class="kbd">Shift</span> 약진동(느리지만 조용) · <span class="kbd">M</span> 소리 끄기</div>
+    <button class="btn" id="startBtn">시작하기</button>
+  </div>
+</div>
+
+<div class="overlay hide" id="end">
+  <div class="card">
+    <span class="tag" id="endTag">숨기 성공</span>
+    <h1 id="endTitle">주인이 공부를 끝냈어요!</h1>
+    <p class="lead" id="endLead"></p>
+    <div class="stats" id="endStats"></div>
+    <button class="btn" id="againBtn">다시 하기</button>
+  </div>
+</div>
+<div class="flash" id="flash"></div>
+
+<script>/*BUNDLE*/</script>
+</body>
+</html>

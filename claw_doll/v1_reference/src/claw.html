@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>인형뽑기 속 인형 - 시안 v1</title>
+<style>/*CSS*/
+#coinRow { display: flex; gap: 6px; }
+.coin { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3b0, #ffc94d 60%, #e9a92a); box-shadow: inset 0 -2px 0 rgba(0,0,0,.12); transition: transform .3s, opacity .3s, filter .3s; }
+.coin.used { filter: grayscale(1); opacity: .35; transform: scale(.8); }
+#struggle { min-width: 280px; }
+#struggle .big { font-size: 26px; font-weight: 900; color: #e0558a; }
+#struggle .bar { width: 260px; height: 16px; margin: 8px auto 0; }
+#polaroid { position: fixed; inset: 0; z-index: 18; display: none; align-items: center; justify-content: center; flex-direction: column; pointer-events: none; }
+#polaroid .frame { width: min(62vmin, 560px); height: min(62vmin, 560px); border: 18px solid #fff; border-bottom-width: 92px; border-radius: 6px;
+  box-shadow: 0 0 0 200vmax rgba(253, 236, 243, .9), 0 24px 60px rgba(90, 40, 80, .35); transform: rotate(-3deg); position: relative; }
+#polaroid .cap { position: absolute; left: 0; right: 0; bottom: -74px; text-align: center; font-size: 26px; font-weight: 800; color: #4b3c55; letter-spacing: -.01em; }
+#polaroid .cap small { display: block; font-size: 14px; color: #a093a8; font-weight: 700; margin-top: 4px; }
+#polaroid .after { margin-top: 70px; pointer-events: auto; text-align: center; }
+#polaroid .after p { font-size: 17px; font-weight: 700; color: #5d4f66; margin: 0 0 14px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hud chip" style="left:16px;top:16px"><small>손님이 쥔 동전</small><div id="coinRow"></div></div>
+<div class="hud chip" style="right:16px;top:16px;text-align:right"><small>숨은 정도</small><div id="hideLabel">들킴</div><div class="bar" style="margin-top:6px"><i id="hideBar"></i></div></div>
+<div class="hud chip" id="struggle" style="left:50%;bottom:64px;transform:translateX(-50%);text-align:center;display:none">
+  <div class="big">스페이스 연타! 버둥버둥</div>
+  <div class="bar"><i id="struggleBar" style="background:linear-gradient(90deg,#ffb3cf,#ff6f9f)"></i></div>
+</div>
+<div class="hud hint" id="hint"><span class="kbd">WASD</span> 이동 &nbsp; <span class="kbd">Space</span> 점프 &nbsp; <span class="kbd">Shift</span> 웅크리기 &nbsp; <span class="kbd">M</span> 소리 &nbsp; <span class="kbd">R</span> 다시</div>
+<div class="bubble" id="bubble"></div>
+
+<div class="overlay" id="start">
+  <div class="card">
+    <span class="tag">3D 시안 v1</span>
+    <h1>인형뽑기 속 인형</h1>
+    <p class="lead">나는 이 기계의 한정판 말랑곰.<br>손님의 동전 5개를 끝까지 버텨라!</p>
+    <div class="tips">
+      <div>바닥의 <b>분홍 고리와 집게 그림자</b>를 보고 피하기</div>
+      <div>다른 인형 <b>밑에 파묻히면</b> 집게가 그 인형을 대신 집어가요</div>
+      <div>잡히면 <b>스페이스 연타</b>로 버둥거려 탈출</div>
+    </div>
+    <div class="keys"><span class="kbd">WASD</span>/<span class="kbd">방향키</span> 이동 · <span class="kbd">Space</span> 점프 · <span class="kbd">Shift</span> 웅크리기 · <span class="kbd">M</span> 소리 끄기</div>
+    <button class="btn" id="startBtn">시작하기</button>
+  </div>
+</div>
+
+<div class="overlay hide" id="end">
+  <div class="card">
+    <span class="tag" id="endTag">버티기 성공</span>
+    <h1 id="endTitle">손님이 포기했어요!</h1>
+    <p class="lead" id="endLead">한정판의 자존심을 지켰다.</p>
+    <div class="stats" id="endStats"></div>
+    <button class="btn" id="againBtn">다시 하기</button>
+  </div>
+</div>
+
+<div id="polaroid">
+  <div class="frame"><div class="cap">드디어 뽑았다!<small id="polaroidSub"></small></div></div>
+  <div class="after"><p>손님 품에 안겨버렸다…</p><button class="btn" id="photoAgain">다시 도전</button></div>
+</div>
+<div class="flash" id="flash"></div>
+
+<script>/*BUNDLE*/</script>
+</body>
+</html>
