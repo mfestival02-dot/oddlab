@@ -155,7 +155,10 @@ async function main() {
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
   // ================= 햄스터: 엉금엉금 + 파고들기 =================
-  const P = { phase: 0, moving: false, heading: 0, burrow: 0, radius: PR, conceal: 0, squash: 0 };
+  const G_DOLL = (0x0001 << 16) | 0xffff, G_PLAYER = (0x0002 << 16) | 0xffff, G_PLAYER_BURROW = (0x0002 << 16) | 0xfffe;
+  for (const d of dolls) for (let i = 0; i < d.body.numColliders(); i++) d.body.collider(i).setCollisionGroups(G_DOLL);
+  pCol.setCollisionGroups(G_PLAYER);
+  const P = { ghost: false, phase: 0, moving: false, heading: 0, burrow: 0, radius: PR, conceal: 0, squash: 0 };
   const _v = new THREE.Vector3();
   function stepPlayer(dt) {
     // 카메라가 +z(유리 쪽)를 보므로 화면 왼쪽이 +x
@@ -168,8 +171,12 @@ async function main() {
     let vx = vel.x, vy = vel.y, vz = vel.z;
 
     P.burrow = damp(P.burrow, burrowing ? 1 : 0, burrowing ? 10 : 5, dt);
-    const targetR = lerp(PR, 0.4, P.burrow);
-    if (Math.abs(targetR - P.radius) > 0.004) { P.radius = targetR; pCol.setRadius(targetR); }
+    // 파고드는 동안에는 인형 사이를 비집고 들어간다(인형과의 충돌을 잠시 끈다)
+    if (burrowing !== P.ghost) {
+      P.ghost = burrowing;
+      pCol.setCollisionGroups(burrowing ? G_PLAYER_BURROW : G_PLAYER);
+      pBody.wakeUp();
+    }
 
     if (P.moving) {
       ix /= len; iz /= len;
@@ -189,15 +196,11 @@ async function main() {
       vx *= 0.8; vz *= 0.8;
     }
     if (burrowing) {
-      vy = Math.min(vy, -3.2);
-      // 꿈틀거리며 주변 인형을 밀어낸다
+      // 위에 인형이 충분히 덮일 때까지 천천히 가라앉고, 그 뒤에는 그 깊이에 머문다
+      vy = P.conceal < 0.9 ? -2.4 : 0.37;
       for (const d of dolls) {
         const q = d.body.translation();
-        const dx = q.x - pos.x, dz = q.z - pos.z, dist = Math.hypot(dx, dz) || 1;
-        if (dist < 1.7 && Math.abs(q.y - pos.y) < 1.1 && q.y < pos.y + 0.5) {
-          const k = (1.7 - dist) * 0.5 * d.body.mass();
-          d.body.applyImpulse({ x: (dx / dist) * k, y: 0.12 * k, z: (dz / dist) * k }, true);
-        }
+        if (Math.hypot(q.x - pos.x, q.z - pos.z) < 2.2 && Math.abs(q.y - pos.y) < 2) d.body.wakeUp();
       }
     }
     pBody.setLinvel({ x: vx, y: vy, z: vz }, true);
