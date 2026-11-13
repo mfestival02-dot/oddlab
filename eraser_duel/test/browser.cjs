@@ -18,6 +18,7 @@ const out = path.join(__dirname, '..', 'shots');
   await p.click('#startBtn'); await p.waitForSelector('#pick:not([hidden])');
   const cards = await p.$$eval('#cards0 .card', (c) => c.length);
   await p.click('#cards0 .card:nth-child(2)'); await p.click('#cards1 .card:nth-child(7)'); await p.waitForTimeout(200);
+  await p.waitForFunction(() => __game.view.thumbsPending === 0, null, { timeout: 120000 }); // 고르기 그림은 나눠 그린다
   await p.screenshot({ path: path.join(out, '02_pick.png') });
   await p.click('#goBtn'); await p.waitForTimeout(2400);
   let s = await st();
@@ -77,6 +78,7 @@ const out = path.join(__dirname, '..', 'shots');
   await p.evaluate(() => localStorage.removeItem('eraser-duel-save-v1'));
   await p.click('#change'); await p.click('#backBtn'); await p.click('#soloBtn'); await p.waitForTimeout(200);
   const locked = await p.$$eval('#cards0 .card', (c) => c.filter((x) => x.disabled).length);
+  await p.waitForFunction(() => __game.view.thumbsPending === 0, null, { timeout: 120000 }); 
   await p.screenshot({ path: path.join(out, '08_solo_pick.png') });
   await p.click('#goBtn'); await p.waitForTimeout(400);
   await p.evaluate(() => { const g = __game.game; g.fireSpot(g.bestSpot(), 0.25); });

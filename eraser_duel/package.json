@@ -6,7 +6,7 @@
     "build": "node build.mjs",
     "start": "node build.mjs && node server/index.mjs",
     "dev": "DEV=1 node server/index.mjs",
-    "test": "node test/verify.mjs && node test/audit.mjs && node test/shape.mjs && node test/online.mjs"
+    "test": "node test/verify.mjs && node test/audit.mjs && node test/shape.mjs && node test/look.mjs && node test/online.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.14.0",

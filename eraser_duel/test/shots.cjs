@@ -9,7 +9,8 @@ const out = path.join(__dirname, '..', 'shots');
   await p.goto('file://' + path.join(__dirname, '..', 'dist', 'index.html'));
   await p.waitForFunction(() => window.__game); await p.waitForTimeout(500);
   await p.click('#startBtn'); await p.waitForTimeout(400);
-  await p.click('#cards0 .card:has-text("곰")'); await p.click('#cards1 .card:has-text("레슬러")'); await p.waitForTimeout(300);
+  await p.click('#cards0 .card:has-text("곰")'); await p.click('#cards1 .card:has-text("레슬러")');
+  await p.waitForFunction(() => __game.view.thumbsPending === 0, null, { timeout: 120000 }); await p.waitForTimeout(300);   // 고르기 그림은 나눠 그린다
   await p.screenshot({ path: path.join(out, '30_shape_pick.png') });
   await p.click('#goBtn'); await p.waitForTimeout(2600);
   await p.screenshot({ path: path.join(out, '31_shape_aim.png') });

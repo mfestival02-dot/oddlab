@@ -1,8 +1,8 @@
 // 그리기: 책상, 지우개, 방향 화살표, 카메라, 디버그 표시
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
-import { GEOM, TYPES, shapeOf } from './config.js';
+import { GEOM, TYPES } from './config.js';
+import { eraserMeshes } from './look.js';
 import { Fx } from './fx.js';
 import { PHASE } from './game.js';
 
@@ -65,17 +65,6 @@ function woodTexture() {
     g.fillStyle = e; g.fillRect(0, 0, w, h);
   });
 }
-function sleeveTexture(pl, label) {
-  return canvasTex(512, 256, (g, w, h) => {
-    g.fillStyle = pl.css; g.fillRect(0, 0, w, h);
-    g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(0, 24, w, 16); g.fillRect(0, h - 40, w, 16);
-    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = `900 104px ${FONT}`; g.fillText(label, w / 2 + 44, h / 2 + 6);
-    g.beginPath(); g.arc(92, h / 2, 54, 0, 7); g.fill();
-    g.fillStyle = pl.css; g.font = `900 58px ${FONT}`; g.fillText(pl.name, 92, h / 2 + 4);
-  });
-}
-
 export class View {
   constructor(container) {
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -259,6 +248,23 @@ export class View {
     // 가방 몇 개
     for (const i of [2, 7, 13, 20, 26, 33]) { const p = others[i]; if (p) add(new THREE.BoxGeometry(2.6, 3.2, 1.2), std([0x3d6fb5, 0xd95b5b, 0x4a9a6a][i % 3], 0.85), p[0] + 3.6, F + 1.6, p[1] + 1); }
   }
+  // 고르기 화면 그림은 한 장씩 나눠 그려 화면이 바로 뜨게 한다(그새 다시 그려져 사라진 카드는 건너뛴다)
+  thumbInto(img, type, side) {
+    const key = type + side;
+    if (this._thumbs && this._thumbs[key]) { img.src = this._thumbs[key]; return; }
+    (this._thumbQ = this._thumbQ || []).push([img, type, side]);
+    if (!this._thumbBusy) { this._thumbBusy = true; setTimeout(() => this._thumbStep(), 0); }
+  }
+  _thumbStep() {
+    const t0 = performance.now();
+    while (performance.now() - t0 < 120) {
+      let job; while ((job = this._thumbQ.shift()) && !job[0].isConnected && !(this._thumbs && this._thumbs[job[1] + job[2]]));
+      if (!job) { this._thumbBusy = false; return; }
+      job[0].src = this.thumb(job[1], job[2]);
+    }
+    setTimeout(() => this._thumbStep(), 0);
+  }
+  get thumbsPending() { return this._thumbBusy ? 1 + (this._thumbQ || []).length : 0; }
   // 지우개 고르기 화면용 작은 그림
   thumb(type, side) {
     const key = type + side; this._thumbs = this._thumbs || {};
@@ -269,10 +275,15 @@ export class View {
       this._tc = new THREE.PerspectiveCamera(28, 200 / 130, 0.1, 20); this._tc.position.set(0.9, 0.85, 1.25); this._tc.lookAt(0, 0, 0);
     }
     const keep = this.scene; this.scene = this._ts;
-    const mesh = this._eraser(PLAYER[side], TYPES[type], type);
+    const mesh = this._eraser(PLAYER[side], TYPES[type], type, true);
     this.scene = keep;
+    // 크기에 맞춰 카메라 거리를 정해 작은 지우개도 칸을 채우게 한다
+    const [hx, hy, hz] = TYPES[type].dims, r = Math.hypot(hx, hy * 1.4, hz);
+    this._tc.position.set(0.9, 0.85, 1.25).setLength(r * 4.6 + 0.25); this._tc.lookAt(0, -0.01, 0);
     mesh.rotation.y = 0.5; this._tr.render(this._ts, this._tc);
     this._ts.remove(mesh);
+    // 그림을 뽑은 뒤 이 지우개만 쓰던 텍스처를 GPU에서 내린다(재질은 남겨 셰이더를 다시 만들지 않게 한다)
+    mesh.traverse((o) => { if (o.material && o.material.map) o.material.map.dispose(); });
     return (this._thumbs[key] = this._tr.domElement.toDataURL('image/png'));
   }
 
@@ -288,37 +299,11 @@ export class View {
       w.visible = false; w.renderOrder = 30; this.scene.add(w); return w;
     });
   }
-  _eraser(pl, T, type) {
-    const [hx, hy, hz] = T.dims, shape = shapeOf(type);
+  // 겉모습은 look.js가 만든다(충돌 모양과 따로, 바깥 치수·무게중심은 맞춘다)
+  _eraser(pl, T, type, small = false) {
     const g = new THREE.Group(), inner = new THREE.Group();
-    if (!shape.plain) {
-      // 모양 지우개: 한 가지 색 고무(플레이어 색 계열)로 덩어리들을 빚는다
-      const col = new THREE.Color(pl.color).lerp(new THREE.Color(0xffffff), 0.16); const hsl = {}; col.getHSL(hsl); col.setHSL((hsl.h + (T.tone || 0) * 0.035 + 1) % 1, hsl.s, Math.min(0.78, Math.max(0.32, hsl.l + (T.tone || 0) * 0.16)));
-      const rubber = new THREE.MeshStandardMaterial({ color: col, roughness: 0.78 });
-      for (const pt of shape.parts) {
-        let geo;
-        if (pt.s === 'box') geo = new RoundedBoxGeometry(pt.h[0] * 2, pt.h[1] * 2, pt.h[2] * 2, 3, Math.min(0.02, Math.min(...pt.h) * 0.45));
-        else if (pt.s === 'cyl') geo = new THREE.CylinderGeometry(pt.rad, pt.rad, pt.hh * 2, 28);
-        else if (pt.s === 'ball') geo = new THREE.SphereGeometry(pt.rad, 22, 16);
-        else geo = new ConvexGeometry(pt.pts.map((v) => new THREE.Vector3(...v)));
-        const m = new THREE.Mesh(geo, rubber);
-        if (pt.s !== 'hull') { m.position.set(...pt.p); m.quaternion.set(pt.q.x, pt.q.y, pt.q.z, pt.q.w); }
-        m.castShadow = m.receiveShadow = true; inner.add(m);
-      }
-      const ink = new THREE.MeshStandardMaterial({ color: 0x2b2228, roughness: 0.5 });
-      for (const d of shape.decor) { const m = new THREE.Mesh(new THREE.SphereGeometry(d.s === 'eye' ? 0.016 : 0.013, 10, 8), ink); m.position.set(d.p[0], d.p[1] + 0.002, d.p[2]); m.scale.y = 0.5; inner.add(m); }
-      g.add(inner); g.userData.inner = inner; this.scene.add(g);
-      return g;
-    }
-    const rubber = new THREE.Mesh(new RoundedBoxGeometry(hx * 2, hy * 2, hz * 2, 4, Math.min(0.02, hy * 0.4)),
-      new THREE.MeshStandardMaterial({ color: pl.rubber, roughness: 0.82 }));
-    const tex = sleeveTexture(pl, T.name);
-    const paper = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 }), plain = new THREE.MeshStandardMaterial({ color: pl.color, roughness: 0.7 });
-    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(hx * 2 * 0.62, hy * 2 + 0.006, hz * 2 + 0.006), [plain, plain, paper, paper, plain, plain]);
-    sleeve.position.x = -hx * 0.2;
-    rubber.castShadow = sleeve.castShadow = true; rubber.receiveShadow = sleeve.receiveShadow = true;
-    inner.add(rubber, sleeve); g.add(inner);
-    g.userData.inner = inner;
+    for (const m of eraserMeshes(pl, type, small)) inner.add(m);
+    g.add(inner); g.userData.inner = inner;
     this.scene.add(g);
     return g;
   }

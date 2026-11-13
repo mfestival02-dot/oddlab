@@ -14,7 +14,7 @@ export function eraserCard(view, key, side, { selected = false, disabled = false
   const T = TYPES[key], spots = spotsOf(key);
   const c = el('button', { className: 'card' + (selected ? ' sel' : ''), disabled, title: T.desc });
   c.style.setProperty('--c', PLAYER[side].css);
-  const img = el('img', { alt: '', width: 100, height: 65 }); img.src = view.thumb(key, side);
+  const img = el('img', { alt: '', width: 100, height: 65 }); view.thumbInto(img, key, side);
   const dots = el('span', { className: 'dots' });
   for (const sp of spots) dots.append(el('i', { className: sp[2] === '꼭짓점' ? 'c' : sp[2] === '끝' ? 'e' : sp[2] === '옆' ? 's' : 'n' }));   // 누름 자리 구성을 색 점으로
   c.append(img, el('strong', { textContent: T.name }), dots);
