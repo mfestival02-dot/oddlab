@@ -1,3 +1,4 @@
+import MODELS from './models.json' with { type: 'json' };
 // 물리 설정과 형상. 1 단위 = 10cm (지우개 5cm × 2.5cm × 1cm).
 export const DT = 1 / 240;                       // 고정 시간 간격(초)
 export const SETTINGS_VERSION = 1;
@@ -18,21 +19,16 @@ export const TYPES = {
   jumbo:  { name: '점보', dims: [0.33, 0.065, 0.165], mass: 2.1, fr: 1.2, re: 0.6, spots: 'all8', desc: '무겁고 넓어요' },
   bouncy: { name: '탱탱', dims: [0.23, 0.06, 0.12], mass: 0.8, fr: 1.52, re: 1.69, ang: 2.61, lift: 1.26, spin: -0.2, push: 0.89, spots: 'diag6', desc: '통통 튀어요' },
   // ---- 모양 지우개: parts는 충돌 덩어리이자 그리는 덩어리(box 반치수 h / cyl 반높이 hh·반지름 rad, 축은 y / ball / hull 점들). p는 위치, r은 회전(라디안).
-  bear:   { name: '곰', group: '동물', mass: 0.9, fr: 1.0, re: 0.9, spots: 'animal6', desc: '둥글둥글, 귀가 걸려요', tone: 0.0,
-    parts: [{ s: 'cyl', hh: 0.05, rad: 0.16, p: [-0.09, 0, 0] }, { s: 'cyl', hh: 0.05, rad: 0.12, p: [0.15, 0, 0] }, { s: 'cyl', hh: 0.05, rad: 0.045, p: [0.24, 0, 0.1] }, { s: 'cyl', hh: 0.05, rad: 0.045, p: [0.24, 0, -0.1] }],
-    decor: [{ s: 'eye', p: [0.18, 0.05, 0.05] }, { s: 'eye', p: [0.18, 0.05, -0.05] }, { s: 'nose', p: [0.235, 0.05, 0] }] },
-  rabbit: { name: '토끼', group: '동물', mass: 0.6, fr: 0.95, re: 1.2, spots: 'animal6', desc: '가볍고 긴 귀가 삐죽', tone: 0.35,
-    parts: [{ s: 'cyl', hh: 0.045, rad: 0.13, p: [-0.12, 0, 0] }, { s: 'cyl', hh: 0.045, rad: 0.1, p: [0.07, 0, 0] }, { s: 'box', h: [0.11, 0.045, 0.03], p: [0.26, 0, 0.05], r: [0, -0.12, 0] }, { s: 'box', h: [0.11, 0.045, 0.03], p: [0.26, 0, -0.05], r: [0, 0.12, 0] }],
-    decor: [{ s: 'eye', p: [0.09, 0.045, 0.045] }, { s: 'eye', p: [0.09, 0.045, -0.045] }, { s: 'nose', p: [0.15, 0.045, 0] }] },
-  turtle: { name: '거북이', group: '동물', mass: 1.7, fr: 1.25, re: 0.45, spots: 'edges4', desc: '묵직하고 잘 안 넘어져요', tone: -0.25,
-    parts: [{ s: 'cyl', hh: 0.07, rad: 0.17, p: [0, 0, 0] }, { s: 'cyl', hh: 0.04, rad: 0.06, p: [0.22, -0.03, 0] }, { s: 'cyl', hh: 0.03, rad: 0.05, p: [0.12, -0.04, 0.15] }, { s: 'cyl', hh: 0.03, rad: 0.05, p: [0.12, -0.04, -0.15] }, { s: 'cyl', hh: 0.03, rad: 0.05, p: [-0.12, -0.04, 0.15] }, { s: 'cyl', hh: 0.03, rad: 0.05, p: [-0.12, -0.04, -0.15] }],
-    decor: [{ s: 'eye', p: [0.245, 0.01, 0.03] }, { s: 'eye', p: [0.245, 0.01, -0.03] }] },
-  wrest1: { name: '레슬러', group: '레슬링', mass: 0.8, fr: 1.05, re: 0.9, spots: 'ends6', desc: '팔다리가 걸려 잘 얹혀요', tone: 0.15,
-    parts: [{ s: 'box', h: [0.09, 0.045, 0.07], p: [0, 0, 0] }, { s: 'cyl', hh: 0.045, rad: 0.055, p: [0.15, 0, 0] }, { s: 'box', h: [0.035, 0.04, 0.09], p: [0.05, 0, 0.15], r: [0, -0.4, 0] }, { s: 'box', h: [0.035, 0.04, 0.09], p: [0.05, 0, -0.15], r: [0, 0.4, 0] }, { s: 'box', h: [0.1, 0.04, 0.035], p: [-0.17, 0, 0.07], r: [0, 0.35, 0] }, { s: 'box', h: [0.1, 0.04, 0.035], p: [-0.17, 0, -0.07], r: [0, -0.35, 0] }],
-    decor: [{ s: 'eye', p: [0.16, 0.045, 0.022] }, { s: 'eye', p: [0.16, 0.045, -0.022] }] },
+  bear:   { name: '고양이', group: '동물', mass: 0.9, fr: 1.0, re: 0.9, spots: 'animal6', desc: '네모난 몸, 꼬리가 걸려요', tone: 0.0,
+    parts: MODELS.bear.parts, model: 'bear' },
+  rabbit: { name: '토끼', group: '동물', mass: 0.6, fr: 0.95, re: 1.2, spots: 'animal6', desc: '작고 가벼워요, 긴 귀가 삐죽', tone: 0.35,
+    parts: MODELS.rabbit.parts, model: 'rabbit' },
+  turtle: { name: '코끼리', group: '동물', mass: 1.7, fr: 1.25, re: 0.45, spots: 'edges4', desc: '크고 묵직해요', tone: -0.25,
+    parts: MODELS.turtle.parts, model: 'turtle' },
+  wrest1: { name: '레슬러', group: '레슬링', mass: 0.8, fr: 1.05, re: 0.9, spots: 'ends6', desc: '만세 자세, 팔다리가 걸려요', tone: 0.15,
+    parts: MODELS.wrest1.parts, model: 'wrest1' },
   wrest2: { name: '덩치', group: '레슬링', mass: 1.5, fr: 1.15, re: 0.6, spots: 'all8', desc: '두툼하고 힘이 세요', tone: -0.1,
-    parts: [{ s: 'box', h: [0.1, 0.075, 0.09], p: [0, 0, 0] }, { s: 'ball', rad: 0.065, p: [0.14, 0.02, 0] }, { s: 'box', h: [0.05, 0.05, 0.04], p: [0.03, -0.025, 0.125] }, { s: 'box', h: [0.05, 0.05, 0.04], p: [0.03, -0.025, -0.125] }, { s: 'box', h: [0.06, 0.04, 0.04], p: [-0.15, -0.035, 0.05] }, { s: 'box', h: [0.06, 0.04, 0.04], p: [-0.15, -0.035, -0.05] }],
-    decor: [{ s: 'eye', p: [0.185, 0.05, 0.025] }, { s: 'eye', p: [0.185, 0.05, -0.025] }] },
+    parts: MODELS.wrest2.parts, model: 'wrest2' },
   roll:   { name: '육각', group: '특이', mass: 0.75, fr: 1.1, re: 0.7, ang: 1.6, spots: 'edges4', desc: '옆으로 누르면 데굴데굴 구르다 면으로 멈춰요', tone: 0.25,
     parts: [{ s: 'hull', pts: [-0.19, 0.19].flatMap((x) => [0, 1, 2, 3, 4, 5].map((i) => [x, Math.cos((i * Math.PI) / 3 + Math.PI / 6) * 0.078, Math.sin((i * Math.PI) / 3 + Math.PI / 6) * 0.078])) }] },
   prism:  { name: '삼각', group: '특이', mass: 0.8, fr: 1.1, re: 0.8, spots: 'edges4', desc: '뾰족해서 위에 얹히기 어려워요', tone: -0.35,
@@ -47,7 +43,7 @@ export function shapeOf(type) {
   const T = TYPES[type];
   if (!T.parts) return (shapes[type] = { plain: true, parts: [{ s: 'box', h: T.dims, p: [0, 0, 0], q: eul([0, 0, 0]), round: T.round, vol: 1 }], decor: [], dims: T.dims });
   const parts = T.parts.map((pt) => {
-    const q = eul(pt.r || [0, 0, 0]);
+    const q = pt.q || eul(pt.r || [0, 0, 0]);
     let vol, corners, c = pt.p ? [...pt.p] : [0, 0, 0];
     if (pt.s === 'box') { vol = 8 * pt.h[0] * pt.h[1] * pt.h[2]; corners = [-1, 1].flatMap((a) => [-1, 1].flatMap((b) => [-1, 1].map((d) => [a * pt.h[0], b * pt.h[1], d * pt.h[2]]))); }
     else if (pt.s === 'cyl') { vol = 2 * pt.hh * Math.PI * pt.rad ** 2; corners = [-1, 1].flatMap((a) => [-1, 1].flatMap((b) => [-1, 1].map((d) => [a * pt.rad, b * pt.hh, d * pt.rad]))); }
@@ -64,9 +60,10 @@ export function shapeOf(type) {
   }
   const decor = (T.decor || []).map((d) => ({ ...d, p: d.p.map((x, k) => x - com[k]) }));
   T.dims = dims.map((v) => Math.round(v * 1000) / 1000);
-  return (shapes[type] = { plain: false, parts, decor, dims: T.dims });
+  return (shapes[type] = { plain: false, parts, decor, dims: T.dims, com });
 }
 for (const k of Object.keys(TYPES)) shapeOf(k);
+export { MODELS };
 export const TYPE_KEYS = Object.keys(TYPES);
 // 누름 자리: 지금 위로 온 면의 긴 방향 s, 짧은 방향 t (-1~1). 지우개는 누른 자리의 반대쪽으로 튀어 나간다.
 // 가장자리 가운데(면)는 곧게, 꼭짓점은 대각선 축으로 구르며 튀어 읽기 어렵다.

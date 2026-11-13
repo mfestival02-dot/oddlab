@@ -7,9 +7,12 @@ import { Planner } from './ai.js';
 import { TYPES } from './config.js';
 import { Net, NetGame } from './net.js';
 import { Lobby } from './lobby.js';
+import { loadModels } from './models.js';
 
 async function main() {
   await RAPIER.init();
+  await loadModels();
+  try { await Promise.all([document.fonts.load('700 40px Gaegu', '지우개'), document.fonts.load('400 40px Gaegu', '지우개')]); } catch (e) { /* 글꼴이 없으면 기본 글꼴로 그린다 */ }
   const localGame = new Game(RAPIER);
   localGame.layoutMode = 'match';          // 일반 경기는 멀리 떨어져 시작한다(개발자 패널의 프리셋은 가까운 검증 배치)
   let game = localGame;

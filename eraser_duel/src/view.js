@@ -1,5 +1,6 @@
 // 그리기: 책상, 지우개, 방향 화살표, 카메라, 디버그 표시
 import * as THREE from 'three';
+import { makeModel } from './models.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
 import { GEOM, TYPES, shapeOf } from './config.js';
@@ -65,14 +66,63 @@ function woodTexture() {
     g.fillStyle = e; g.fillRect(0, 0, w, h);
   });
 }
-function sleeveTexture(pl, label) {
+// 띠지 꾸밈: 종류마다 무늬가 다르다(상표 없이 지어낸 디자인)
+const SLEEVE = {
+  normal: { pat: 'band' }, sharp: { pat: 'band', badge: '새것' }, worn: { pat: 'band', faded: 1 }, half: { pat: 'stripe', torn: 1 },
+  flat: { pat: 'stripe' }, square: { pat: 'check' }, long: { pat: 'stripe' }, art: { pat: 'kraft', badge: '미술용' },
+  mini: { pat: 'dots' }, jumbo: { pat: 'band', badge: '대형' }, bouncy: { pat: 'dots', badge: '말랑' },
+};
+const LABEL_FONT = '"Gaegu","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif';
+function seeded(n) { let a = n >>> 0; return () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; }
+function sleeveTexture(pl, label, type, side) {
+  const S = SLEEVE[type] || SLEEVE.normal, W = 1024, H = side ? 128 : 512;
+  return canvasTex(W, H, (g, w, h) => {
+    const R = seeded(label.length * 977 + (side ? 31 : 7) + pl.name.charCodeAt(0));
+    const kraft = S.pat === 'kraft', ink = kraft ? '#4a3524' : pl.css, paper = kraft ? '#c9a678' : '#fbf8f0';
+    g.fillStyle = paper; g.fillRect(0, 0, w, h);
+    // 바탕 무늬
+    g.fillStyle = ink;
+    if (S.pat === 'band' || kraft) { g.fillRect(0, 0, w, h * 0.2); g.fillRect(0, h * 0.8, w, h * 0.2); g.globalAlpha = 0.35; g.fillRect(0, h * 0.24, w, h * 0.03); g.fillRect(0, h * 0.73, w, h * 0.03); g.globalAlpha = 1; }
+    else if (S.pat === 'stripe') { g.fillRect(0, 0, w, h); g.fillStyle = paper; g.globalAlpha = 0.22; for (let x = -h; x < w; x += 64) { g.beginPath(); g.moveTo(x, h); g.lineTo(x + h, 0); g.lineTo(x + h + 28, 0); g.lineTo(x + 28, h); g.fill(); } g.globalAlpha = 1; }
+    else if (S.pat === 'check') { g.fillRect(0, 0, w, h); g.fillStyle = paper; g.globalAlpha = 0.2; for (let x = 0; x < w; x += 64) for (let y = 0; y < h; y += 64) if (((x + y) / 64) % 2 === 0) g.fillRect(x, y, 64, 64); g.globalAlpha = 1; }
+    else { g.fillRect(0, 0, w, h); g.fillStyle = paper; g.globalAlpha = 0.3; for (let x = 24; x < w; x += 72) for (let y = 24; y < h; y += 72) { g.beginPath(); g.arc(x + ((y / 72) % 2) * 36, y, 13, 0, 7); g.fill(); } g.globalAlpha = 1; }
+    if (!side) {
+      // 가운데 이름표
+      const bx = w * 0.26, bw = w * 0.56, by = h * 0.27, bh = h * 0.46;
+      g.fillStyle = paper; g.beginPath(); g.roundRect(bx, by, bw, bh, 26); g.fill();
+      g.strokeStyle = ink; g.lineWidth = 6; g.beginPath(); g.roundRect(bx + 10, by + 10, bw - 20, bh - 20, 18); g.stroke();
+      g.fillStyle = ink; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `700 ${label.length > 2 ? 132 : 158}px ${LABEL_FONT}`; g.fillText(label, bx + bw / 2, by + bh / 2 - 12);
+      g.font = `700 34px ${LABEL_FONT}`; g.fillText('지 우 개  ·  부드럽게 잘 지워져요', bx + bw / 2, by + bh - 34);
+      // 왼쪽 동그라미(누구 것인지)
+      g.fillStyle = pl.css; g.beginPath(); g.arc(w * 0.13, h / 2, 82, 0, 7); g.fill();
+      g.strokeStyle = paper; g.lineWidth = 8; g.beginPath(); g.arc(w * 0.13, h / 2, 68, 0, 7); g.stroke();
+      g.fillStyle = '#fff'; g.font = `700 92px ${LABEL_FONT}`; g.fillText(pl.name, w * 0.13, h / 2 + 4);
+      // 오른쪽 막대 줄(가짜 바코드)과 딱지
+      g.fillStyle = kraft ? '#4a3524' : '#2b2b33'; let x = w * 0.86; for (let i = 0; i < 16; i++) { const t = 3 + Math.floor(R() * 3) * 3; g.fillRect(x, h * 0.36, t, h * 0.2); x += t + 4 + Math.floor(R() * 2) * 3; }
+      g.font = `700 24px ${LABEL_FONT}`; g.fillText('8 801234 5678', w * 0.915, h * 0.61);
+      if (S.badge) { g.save(); g.translate(w * 0.915, h * 0.24); g.rotate(-0.12); g.fillStyle = '#ffd84a'; g.beginPath(); for (let i = 0; i < 24; i++) { const r = i % 2 ? 44 : 58, a = (i / 24) * Math.PI * 2; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); } g.fill(); g.fillStyle = '#c2371f'; g.font = `700 34px ${LABEL_FONT}`; g.fillText(S.badge, 0, 2); g.restore(); }
+    }
+    // 종이 결과 쓰던 흔적
+    g.globalAlpha = 0.05; g.fillStyle = '#000'; for (let i = 0; i < 900; i++) g.fillRect(R() * w, R() * h, 2 + R() * 3, 1);
+    g.globalAlpha = 1;
+    const marks = S.faded ? 26 : 7;
+    for (let i = 0; i < marks; i++) { g.strokeStyle = `rgba(60,60,70,${0.05 + R() * 0.1})`; g.lineWidth = 2 + R() * 5; g.beginPath(); const x0 = R() * w, y0 = R() * h; g.moveTo(x0, y0); g.quadraticCurveTo(x0 + R() * 160 - 80, y0 + R() * 60 - 30, x0 + R() * 220 - 110, y0 + R() * 90 - 45); g.stroke(); }
+    if (S.faded) { g.fillStyle = 'rgba(250,246,236,0.42)'; g.fillRect(0, 0, w, h); for (let i = 0; i < 5; i++) { g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 3; g.beginPath(); const x0 = R() * w; g.moveTo(x0, 0); g.lineTo(x0 + R() * 50 - 25, h); g.stroke(); } }
+    // 띠지 끝: 삐뚤게 잘린 가장자리 그늘
+    const gr = g.createLinearGradient(w - 26, 0, w, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.22)'); g.fillStyle = gr; g.fillRect(w - 26, 0, 26, h);
+    if (S.torn) { g.fillStyle = '#f3ede0'; g.beginPath(); g.moveTo(w, 0); for (let y = 0; y <= h; y += h / 14) g.lineTo(w - 10 - R() * 34, y); g.lineTo(w, h); g.fill(); }
+  });
+}
+// 고무 겉면: 고운 얼룩과 양 끝의 연필 가루 자국
+function rubberTexture(pl, type) {
   return canvasTex(512, 256, (g, w, h) => {
-    g.fillStyle = pl.css; g.fillRect(0, 0, w, h);
-    g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(0, 24, w, 16); g.fillRect(0, h - 40, w, 16);
-    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = `900 104px ${FONT}`; g.fillText(label, w / 2 + 44, h / 2 + 6);
-    g.beginPath(); g.arc(92, h / 2, 54, 0, 7); g.fill();
-    g.fillStyle = pl.css; g.font = `900 58px ${FONT}`; g.fillText(pl.name, 92, h / 2 + 4);
+    const R = seeded(type.length * 131 + pl.name.charCodeAt(0) * 17), worn = type === 'worn' || type === 'half';
+    g.fillStyle = '#' + pl.rubber.toString(16).padStart(6, '0'); g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(${R() > 0.5 ? '255,255,255' : '120,110,100'},${R() * 0.07})`; g.fillRect(R() * w, R() * h, 1 + R() * 2, 1 + R() * 2); }
+    const smear = (x0, wd, n) => { for (let i = 0; i < n; i++) { const x = x0 + R() * wd, y = R() * h, r = 14 + R() * 46, gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(70,72,84,${0.04 + R() * (worn ? 0.22 : 0.07)})`); gr.addColorStop(1, 'rgba(70,72,84,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); } };
+    smear(0, w * 0.14, worn ? 22 : 7); smear(w * 0.84, w * 0.16, worn ? 22 : 7);
+    for (let i = 0; i < (worn ? 22 : 8); i++) { g.strokeStyle = `rgba(60,62,74,${0.12 + R() * 0.2})`; g.lineWidth = 1 + R() * 2.5; const x0 = R() > 0.5 ? R() * w * 0.14 : w * (0.86 + R() * 0.14), y0 = R() * h; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + R() * 36 - 18, y0 + R() * 50 - 25); g.stroke(); }
   });
 }
 
@@ -271,7 +321,7 @@ export class View {
     const keep = this.scene; this.scene = this._ts;
     const mesh = this._eraser(PLAYER[side], TYPES[type], type);
     this.scene = keep;
-    mesh.rotation.y = 0.5; this._tr.render(this._ts, this._tc);
+    mesh.rotation.y = TYPES[type].model ? -0.75 : 0.5; this._tr.render(this._ts, this._tc);
     this._ts.remove(mesh);
     return (this._thumbs[key] = this._tr.domElement.toDataURL('image/png'));
   }
@@ -291,6 +341,10 @@ export class View {
   _eraser(pl, T, type) {
     const [hx, hy, hz] = T.dims, shape = shapeOf(type);
     const g = new THREE.Group(), inner = new THREE.Group();
+    if (T.model) {
+      const m = makeModel(T.model, shape.com, pl.color);
+      if (m) { inner.add(m); g.add(inner); g.userData.inner = inner; this.scene.add(g); return g; }
+    }
     if (!shape.plain) {
       // 모양 지우개: 한 가지 색 고무(플레이어 색 계열)로 덩어리들을 빚는다
       const col = new THREE.Color(pl.color).lerp(new THREE.Color(0xffffff), 0.16); const hsl = {}; col.getHSL(hsl); col.setHSL((hsl.h + (T.tone || 0) * 0.035 + 1) % 1, hsl.s, Math.min(0.78, Math.max(0.32, hsl.l + (T.tone || 0) * 0.16)));
@@ -310,11 +364,14 @@ export class View {
       g.add(inner); g.userData.inner = inner; this.scene.add(g);
       return g;
     }
-    const rubber = new THREE.Mesh(new RoundedBoxGeometry(hx * 2, hy * 2, hz * 2, 4, Math.min(0.02, hy * 0.4)),
-      new THREE.MeshStandardMaterial({ color: pl.rubber, roughness: 0.82 }));
-    const tex = sleeveTexture(pl, T.name);
-    const paper = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 }), plain = new THREE.MeshStandardMaterial({ color: pl.color, roughness: 0.7 });
-    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(hx * 2 * 0.62, hy * 2 + 0.006, hz * 2 + 0.006), [plain, plain, paper, paper, plain, plain]);
+    const rubber = new THREE.Mesh(new RoundedBoxGeometry(hx * 2, hy * 2, hz * 2, 5, Math.min(T.round ? Math.max(0.02, T.round) : 0.02, hy * 0.45)),
+      new THREE.MeshStandardMaterial({ map: rubberTexture(pl, type), roughness: 0.86 }));
+    const paper = new THREE.MeshStandardMaterial({ map: sleeveTexture(pl, T.name, type, false), roughness: 0.62 }), edge = new THREE.MeshStandardMaterial({ map: sleeveTexture(pl, T.name, type, true), roughness: 0.62 });
+    const hide = new THREE.MeshBasicMaterial({ visible: false });
+    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(hx * 2 * 0.62, hy * 2 + 0.008, hz * 2 + 0.008), [hide, hide, paper, paper, edge, edge]);
+    // 띠지 양 끝의 종이 두께: 안쪽이 살짝 어둡게 보이는 테
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(hx * 2 * 0.62 - 0.004, hy * 2 + 0.004, hz * 2 + 0.004), new THREE.MeshStandardMaterial({ color: 0xd9d2c2, roughness: 0.9 }));
+    sleeve.add(rim);
     sleeve.position.x = -hx * 0.2;
     rubber.castShadow = sleeve.castShadow = true; rubber.receiveShadow = sleeve.receiveShadow = true;
     inner.add(rubber, sleeve); g.add(inner);

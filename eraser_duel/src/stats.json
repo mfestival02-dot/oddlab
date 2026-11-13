@@ -89,43 +89,43 @@
  },
  "bear": {
   "speed": 0.83,
-  "hop": 0.75,
-  "balance": 1,
+  "hop": 0.82,
+  "balance": 0,
   "weight": 0.38,
   "cm": 14.2,
-  "hopCm": 1.7
+  "hopCm": 1.8
  },
  "rabbit": {
-  "speed": 0.95,
-  "hop": 0.86,
-  "balance": 0.5,
+  "speed": 0.88,
+  "hop": 0.31,
+  "balance": 0,
   "weight": 0.25,
-  "cm": 16.2,
-  "hopCm": 1.9
+  "cm": 15.1,
+  "hopCm": 0.7
  },
  "turtle": {
-  "speed": 0.65,
-  "hop": 0.72,
-  "balance": 1,
+  "speed": 0.77,
+  "hop": 0.5,
+  "balance": 0.5,
   "weight": 0.71,
-  "cm": 11.1,
-  "hopCm": 1.6
+  "cm": 13.1,
+  "hopCm": 1.1
  },
  "wrest1": {
-  "speed": 0.84,
-  "hop": 0.69,
-  "balance": 0.33,
+  "speed": 0.82,
+  "hop": 0.86,
+  "balance": 0.83,
   "weight": 0.33,
-  "cm": 14.4,
-  "hopCm": 1.5
+  "cm": 13.9,
+  "hopCm": 1.9
  },
  "wrest2": {
-  "speed": 0.7,
-  "hop": 0.76,
+  "speed": 0.68,
+  "hop": 0.69,
   "balance": 1,
   "weight": 0.63,
-  "cm": 11.9,
-  "hopCm": 1.7
+  "cm": 11.6,
+  "hopCm": 1.5
  },
  "roll": {
   "speed": 0.86,

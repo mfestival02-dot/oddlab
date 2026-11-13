@@ -3,7 +3,7 @@ import * as esbuild from 'esbuild';
 import fs from 'fs';
 import http from 'http';
 async function build() {
-  const r = await esbuild.build({ entryPoints: ['src/main.js'], bundle: true, minify: true, format: 'iife', write: false, target: 'es2020', legalComments: 'none', loader: { '.json': 'json' } });
+  const r = await esbuild.build({ entryPoints: ['src/main.js'], bundle: true, minify: true, format: 'iife', write: false, target: 'es2020', legalComments: 'none', loader: { '.json': 'json', '.glb': 'binary', '.png': 'dataurl' } });
   const js = r.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
   // 글꼴은 파일 안에 넣어 한 파일로도 열리게 한다
   const face = (file, weight) => `@font-face{font-family:"Gaegu";font-weight:${weight};font-display:swap;src:url(data:font/woff2;base64,${fs.readFileSync(file).toString('base64')}) format("woff2");}`;
