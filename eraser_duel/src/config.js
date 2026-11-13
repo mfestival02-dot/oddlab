@@ -1,5 +1,5 @@
 // 물리 설정과 형상. 1 단위 = 10cm (지우개 5cm × 2.5cm × 1cm).
-export const DT = 1 / 120;                       // 고정 시간 간격(초)
+export const DT = 1 / 240;                       // 고정 시간 간격(초)
 export const SETTINGS_VERSION = 1;
 
 // 지우개 종류. dims는 반치수(길이/두께/폭), fr·re·ang은 마찰·반발·각 감쇠에 곱하는 배율,
@@ -31,6 +31,7 @@ export const SETTING_DEFS = [
   ['vAssist',     '수직 보조 충격량',  0.38, 0,   1.5, 0.01, '수평 충격량 대비 위쪽 충격 비율. 앞부분 들림과 도약을 돕는다.'],
   ['spinAssist',  '회전 보조 강도',    0.26,  -1,  1,   0.01, '추가 회전 충격. 양수면 앞이 들리는 쪽, 음수면 앞으로 구르는 쪽.'],
   ['hitBack',     '충격 위치(뒤쪽)',   0.32,  0,   1,   0.01, '무게중심에서 발사 반대쪽으로 얼마나 떨어진 곳을 치는가. 1이면 뒤끝.'],
+  ['hitSide',     '충격 위치(옆 비낌)', 0.85, 0,   1,   0.01, '비스듬히 놓인 지우개를 칠 때 손가락이 모서리·꼭짓점 쪽으로 비껴 닿는 정도. 0이면 항상 중심선.'],
   ['hitHeight',   '충격 위치(높이)',   -0.7, -1,  1,   0.01, '무게중심 기준 높이. -1이면 바닥 모서리, 1이면 윗면.'],
   ['powerCurve',  '파워 곡선',         1.25, 0.5, 3,   0.05, '게이지 값에 거듭제곱. 클수록 약한 구간이 더 섬세해진다.'],
   ['friction',    '마찰 계수',         0.6, 0,   2,   0.01, '책상과 지우개 접촉 마찰.'],
@@ -70,7 +71,19 @@ export function validateSettings(input) {
 }
 
 // 기본 배치: 서로 마주 보고 15cm 떨어져 있다. q는 y축 회전(라디안)으로 준다.
-export function initialLayout(types = ['normal', 'normal']) {
+// 'match' 일반 경기: 책상 양쪽에 40cm쯤 떨어져, 매번 조금씩 다른 각도로 놓인다(rnd는 0~1 난수 함수).
+// 'near' 개발자 검증: 15cm 거리에 고정 배치. 올라타기와 접촉 판정을 반복 확인하는 용도.
+export function initialLayout(types = ['normal', 'normal'], mode = 'near', rnd = Math.random) {
+  if (mode === 'match') {
+    const r = (a, b) => a + rnd() * (b - a);
+    return {
+      bodies: [
+        { p: [-2.0, TYPES[types[0]].dims[1] + 0.002, r(-0.5, 0.5)], yaw: r(-0.6, 0.6), type: types[0] },
+        { p: [2.0, TYPES[types[1]].dims[1] + 0.002, r(-0.5, 0.5)], yaw: Math.PI + r(-0.6, 0.6), type: types[1] },
+      ],
+      aim: [0, Math.PI],
+    };
+  }
   return {
     bodies: [
       { p: [-0.75, TYPES[types[0]].dims[1] + 0.002, 0.04], yaw: 0.10, type: types[0] },

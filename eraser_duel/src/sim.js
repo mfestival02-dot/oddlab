@@ -28,7 +28,7 @@ export class Sim {
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(b.p[0], b.p[1], b.p[2]).setRotation(b.q)
         .setLinvel(...(b.lv || [0, 0, 0])).setAngvel({ x: (b.av || [0, 0, 0])[0], y: (b.av || [0, 0, 0])[1], z: (b.av || [0, 0, 0])[2] })
-        .setLinearDamping(this.S.linDamp).setAngularDamping(this.S.angDamp * (TYPES[b.type || 'normal'].ang ?? 1)).setCcdEnabled(true).setCanSleep(true));
+        .setLinearDamping(this.S.linDamp).setAngularDamping(this.S.angDamp * (TYPES[b.type || 'normal'].ang ?? 1)).setCcdEnabled(true).setSoftCcdPrediction(0.12).setCanSleep(true));
       const type = b.type || 'normal', T = TYPES[type], [hx, hy, hz] = T.dims;
       const col = world.createCollider(RAPIER.ColliderDesc.roundCuboid(hx - r, hy - r, hz - r, r)
         .setMass(T.mass).setFriction(this.S.friction * T.fr).setRestitution(Math.min(0.95, this.S.restitution * T.re)), body);
@@ -66,8 +66,21 @@ export class Sim {
     const J = S.impulse * Math.pow(T.mass, 0.85) * (T.push ?? 1) * H.h * Math.pow(Math.min(1, Math.max(0, power)), S.powerCurve);
     const vAssist = S.vAssist * H.v * (T.lift ?? 1), spinAssist = S.spinAssist + H.spin + (T.spin ?? 0);
     const c = body.translation();
-    const back = S.hitBack * this.extent(i, d), up = S.hitHeight * this.extent(i, [0, 1, 0]);
-    const point = { x: c.x - d[0] * back, y: c.y + up, z: c.z - d[2] * back };
+    // 손가락이 닿는 곳 = 발사 반대쪽으로 가장 튀어나온 부분.
+    // 면이 발사 방향과 마주 보면 그 면의 가운데, 비스듬히 놓였으면 모서리·꼭짓점 쪽으로 옮겨 간다.
+    // 그래서 비스듬한 지우개를 밀면 무게중심을 비껴 치게 되어 저절로 돌면서 옆으로 샌다(무작위 값은 쓰지 않는다).
+    const q = body.rotation(), dims = this.dims[i];
+    const off = [0, 0, 0];
+    [[1, 0, 0], [0, 1, 0], [0, 0, 1]].forEach((e, k) => {
+      const a = rot(q, e), cth = a[0] * d[0] + a[2] * d[2];
+      const t = Math.min(1, Math.max(0, (Math.abs(cth) - 0.1) / 0.35)), w = t * t * (3 - 2 * t);
+      const s = -Math.sign(cth) * dims[k] * w;
+      off[0] += a[0] * s; off[1] += a[1] * s; off[2] += a[2] * s;
+    });
+    // 앞뒤 거리(뒤로 얼마나)와 옆 거리(중심선에서 얼마나 비꼈나)로 나눠 각각 설정값을 곱한다
+    const back = -(off[0] * d[0] + off[2] * d[2]) * S.hitBack, up = S.hitHeight * this.extent(i, [0, 1, 0]);
+    const side = (off[0] * -d[2] + off[2] * d[0]) * S.hitSide;
+    const point = { x: c.x - d[0] * back - d[2] * side, y: c.y + up, z: c.z - d[2] * back + d[0] * side };
     const imp = { x: d[0] * J, y: J * vAssist, z: d[2] * J };
     body.applyImpulseAtPoint(imp, point, true);
     // 회전 보조: 축 d×y 는 '앞이 들리는' 방향. 토크 = r × J 와 같은 축이라 부호를 그대로 비교할 수 있다.
@@ -77,7 +90,7 @@ export class Sim {
     }
     // r × J 의 '앞 들림' 성분(진단용): 양수면 기본 충격만으로 앞이 들린다
     const torqueNoseUp = (-back) * (J * vAssist) - up * J;
-    return { J, point, imp, torqueNoseUp };
+    return { J, point, imp, torqueNoseUp, side };
   }
 
   step() {

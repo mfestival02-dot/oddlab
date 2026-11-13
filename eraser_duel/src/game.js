@@ -17,6 +17,7 @@ export class Game {
     this.lastShot = null;                // 마지막 발사 직전 상태(자동 저장)
     this.onEvent = () => {};
     this.types = ['normal', 'normal'];
+    this.layoutMode = 'near';             // 'match' 일반 경기(멀리서 시작) / 'near' 개발자 검증(가까이)
     this.events = [];                    // 연출·소리용 사건 기록(그리는 쪽에서 꺼내 쓴다)
     this.restart();
   }
@@ -38,9 +39,11 @@ export class Game {
     this.events.length = 0;
   }
   restart() {
-    const L = initialLayout(this.types);
+    const L = initialLayout(this.types, this.layoutMode, this.rnd || Math.random);
     this.player = 0;
+    this.turnNo = 1;
     this.aim = [...L.aim];
+    if (this.layoutMode === 'match') this.aim = L.bodies.map((b, i) => Math.atan2(L.bodies[1 - i].p[2] - b.p[2], L.bodies[1 - i].p[0] - b.p[0]));
     this._build({ bodies: L.bodies.map((b) => ({ p: b.p, q: yawQuat(b.yaw), type: b.type })) }, { ...this.pending });
     this.phase = PHASE.AIM;
     this.onEvent('restart');
@@ -114,11 +117,11 @@ export class Game {
     while (this.acc >= DT) { this.tick(); this.acc -= DT; }
     return this.acc / DT;
   }
+  gaugeAt(t) { const u = (Math.max(0, t) / this.applied.gaugePeriod) % 1; return u < 0.5 ? u * 2 : 2 - u * 2; }   // 0 → 1 → 0 왕복
   tick() {
     if (this.phase === PHASE.POWER) {
       this.gauge.t += DT;
-      const u = (this.gauge.t / this.applied.gaugePeriod) % 1;
-      this.gauge.value = u < 0.5 ? u * 2 : 2 - u * 2;   // 0 → 1 → 0 왕복
+      this.gauge.value = this.gaugeAt(this.gauge.t);
     }
     if (this.phase === PHASE.PHYSICS || this.phase === PHASE.RESULT) {
       this.prev = this.curr;
@@ -171,6 +174,7 @@ export class Game {
   }
   nextTurn() {
     this.player = 1 - this.player;
+    this.turnNo = (this.turnNo || 1) + 1;
     this.phase = PHASE.AIM;
     this.gauge = { t: 0, value: 0 };
     this.timers = { phys: 0, stable: 0, perch: 0, other: 0 };

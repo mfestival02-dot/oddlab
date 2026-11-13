@@ -4,12 +4,14 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node build.mjs --serve",
-    "test": "node test/verify.mjs"
+    "start": "node build.mjs && node server/index.mjs",
+    "dev": "DEV=1 node server/index.mjs",
+    "test": "node test/verify.mjs && node test/audit.mjs && node test/shape.mjs && node test/online.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.14.0",
     "esbuild": "^0.25.0",
-    "three": "0.170.0"
+    "three": "0.170.0",
+    "ws": "^8.23.0"
   }
 }

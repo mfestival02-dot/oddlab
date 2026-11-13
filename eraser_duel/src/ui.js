@@ -22,7 +22,8 @@ export class UI {
     this.mode = 'versus'; this.picks = ['normal', 'normal']; this.meta = loadMeta(); this.lastStatus = '';
     $('fire').addEventListener('click', () => input.press());
     $('again').addEventListener('click', () => { sfx.click(); this.rematch(); });
-    $('change').addEventListener('click', () => { sfx.click(); this.showPick(this.mode); });
+    $('change').addEventListener('click', () => { sfx.click(); if (this.mode === 'online') this.lobby.net.send({ t: 'leave' }); else this.showPick(this.mode); });
+    $('onlineBtn').addEventListener('click', () => { sfx.init(); sfx.click(); this.lobby.open(); });
     $('soloBtn').addEventListener('click', () => { sfx.init(); sfx.click(); this.showPick('solo'); });
     $('goBtn').addEventListener('click', () => this.begin());
     $('backBtn').addEventListener('click', () => { sfx.click(); $('pick').hidden = true; $('start').hidden = false; });
@@ -83,6 +84,7 @@ export class UI {
     this.banner('1P 차례!', this.mode === 'solo' ? '컴퓨터와 한 판' : '파랑 지우개부터');
   }
   rematch() {
+    if (this.mode === 'online') { if (this.game.result) this.lobby.net.send({ t: 'rematch', yes: true }); return; }
     if (this.mode === 'solo') {
       if (!(this.meta.erasers[this.picks[0]] > 0)) return this.showPick('solo');     // 뺏겨서 없으면 다시 고른다
       this.picks[1] = TYPE_KEYS[Math.floor(Math.random() * TYPE_KEYS.length)];
@@ -94,6 +96,7 @@ export class UI {
   advanceMenu() {
     if (!$('start').hidden) { this.sfx.init(); this.showPick('versus'); return true; }
     if (!$('pick').hidden) { this.begin(); return true; }
+    if (!$('online').hidden) return true;
     return false;
   }
   pop(text, p, color = '#d9402f') {
@@ -187,6 +190,10 @@ export class UI {
       el('button', { className: 'btn small', id: 'dbgPreset', textContent: '성공 재현 프리셋 불러오기', onclick: () => { this.loadPreset(); this.setMsg2('프리셋을 불러왔습니다. [이 값으로 발사]를 누르면 1P가 올라탑니다.'); } }),
       el('button', { className: 'btn small', id: 'dbgPresetFire', textContent: '프리셋 바로 발사', onclick: () => { this.loadPreset(); this.debugFire(); } }),
     ]));
+    root.append(el('div', { className: 'btns' }, [
+      el('button', { className: 'btn small', id: 'dbgNear', textContent: '근거리 검증 배치로 다시 시작', onclick: () => { if (g.online) return; this.game.layoutMode = 'near'; this.input.restart(); this.setMsg2('가까운 검증 배치(15cm)로 시작했습니다. 올라타기·접촉 판정 확인용입니다.'); } }),
+      el('button', { className: 'btn small', id: 'dbgMatch', textContent: '일반 경기 배치로 다시 시작', onclick: () => { if (g.online) return; this.game.layoutMode = 'match'; this.input.restart(); this.setMsg2('일반 경기 배치(40cm, 매번 다른 각도)로 시작했습니다.'); } }),
+    ]));
     this.msg2 = el('div');
     this.dbgDraw = el('input', { type: 'checkbox', id: 'dbgDraw' });
     this.dbgDraw.addEventListener('change', () => { this.view.debug = this.dbgDraw.checked; });
@@ -243,9 +250,11 @@ export class UI {
   // ---------- 매 프레임 표시 ----------
   update(bodies) {
     const g = this.game, pl = PLAYER[g.player], sfx = this.sfx;
-    const solo = this.mode === 'solo', cpuTurn = solo && g.player === 1;
-    const who = (i) => (solo && i === 1 ? '컴퓨터' : PLAYER[i].name);
-    text('tagName1', solo ? '컴퓨터' : '2P'); text('tagType0', TYPES[g.types[0]].name); text('tagType1', TYPES[g.types[1]].name);
+    const online = g.online === true, solo = this.mode === 'solo' && !online;
+    const cpuTurn = (solo && g.player === 1) || (online && g.player !== g.mySeat), other = online ? '상대' : '컴퓨터';
+    const who = (i) => (online ? (g.names[i] || PLAYER[i].name) : solo && i === 1 ? '컴퓨터' : PLAYER[i].name);
+    text('tagName0', online ? who(0) : '1P'); text('tagName1', online ? who(1) : solo ? '컴퓨터' : '2P');
+    put('devBtn', 'h', online, (e, x) => { e.hidden = x; if (x && !$('dev').hidden) this.toggleDev(false); }); text('tagType0', TYPES[g.types[0]].name); text('tagType1', TYPES[g.types[1]].name);
     put('turn', 'p', pl.css, (e, x) => document.documentElement.style.setProperty('--p', x));
     const over = g.phase === PHASE.RESULT;
     put('tag0', 'on', over ? g.result.winner === 0 : g.player === 0, (e, x) => e.classList.toggle('on', x));
@@ -253,8 +262,8 @@ export class UI {
     const T = g.timers, S = g.applied;
     let main = '', sub = '';
     const perching = g.phase === PHASE.PHYSICS && !g.sim.fallen[0] && !g.sim.fallen[1] && g.info.upper !== null && T.perch > 0.05;
-    if (g.phase === PHASE.AIM) { main = cpuTurn ? '컴퓨터가 방향을 재는 중…' : `${pl.name}: 방향을 정하고 게이지를 시작하세요`; sub = cpuTurn ? '' : '상대 지우개 위에 올라타면 승리'; }
-    else if (g.phase === PHASE.POWER) { main = cpuTurn ? '컴퓨터가 세기를 재는 중…' : '눈금을 보고 튕기세요!'; sub = cpuTurn ? '' : '빨간 칸은 책상 밖으로 날아갈 수 있어요'; }
+    if (g.phase === PHASE.AIM) { main = cpuTurn ? `${other}가 방향을 재는 중…` : `${online ? '내 차례' : pl.name}: 방향을 정하고 게이지를 시작하세요`; sub = cpuTurn ? '' : '상대 지우개 위에 올라타면 승리'; }
+    else if (g.phase === PHASE.POWER) { main = cpuTurn ? `${other}가 세기를 재는 중…` : '눈금을 보고 튕기세요!'; sub = cpuTurn ? '' : '빨간 칸은 책상 밖으로 날아갈 수 있어요'; }
     else if (g.phase === PHASE.PHYSICS) {
       if (g.sim.fallen[0] || g.sim.fallen[1]) main = '앗, 떨어졌다…';
       else if (perching) { main = '걸침 확인 중…'; sub = `${who(g.info.upper)}가 위 · ${T.perch.toFixed(1)} / ${S.perchHold.toFixed(1)}초`; }
@@ -302,13 +311,20 @@ export class UI {
         $('resultTitle').textContent = winner === null ? '무승부' : `${who(winner)} 승리!`;
         $('resultExtra').textContent = solo ? applyResult(this.meta, winner, g.types[0], g.types[1], Object.fromEntries(TYPE_KEYS.map((k) => [k, TYPES[k].name]))) : '';
         $('resultTitle').style.color = winner === null ? '' : PLAYER[winner].css;
-        $('resultWhy').textContent = reason === 'perch' ? '상대 위에 올라탔습니다' : reason === 'fell' ? '상대가 책상 밖으로 떨어졌습니다' : '둘 다 책상 밖으로 떨어졌습니다';
-        $('stamp').innerHTML = winner === null ? this.stampSvg('#2f66c8', '다시 해 봐요', '비김') : this.stampSvg(solo && winner === 1 ? '#2f66c8' : '#d9402f', solo && winner === 1 ? '다시 해 봐요' : '참 잘했어요', solo ? (winner === 0 ? '승' : '패') : PLAYER[winner].name);
+        const WHY = { perch: '상대 위에 올라탔습니다', fell: '상대가 책상 밖으로 떨어졌습니다', 'both-fell': '둘 다 책상 밖으로 떨어졌습니다', 'forfeit-left': '상대가 방을 나갔습니다', 'forfeit-timeout': '상대의 연결이 끊긴 채 돌아오지 않았습니다', 'forfeit-idle': '제한 시간 안에 튕기지 않았습니다' };
+        $('resultWhy').textContent = WHY[reason] || reason;
+        $('stamp').innerHTML = winner === null ? this.stampSvg('#2f66c8', '다시 해 봐요', '비김') : (() => { const lost = (solo && winner === 1) || (online && winner !== g.mySeat); return this.stampSvg(lost ? '#2f66c8' : '#d9402f', lost ? '다시 해 봐요' : '참 잘했어요', solo || online ? (lost ? '패' : '승') : PLAYER[winner].name); })();
         res.hidden = true; void res.offsetWidth; res.hidden = false;       // 도장 찍는 움직임을 다시 튼다
         winner === null ? sfx.sad() : sfx.stamp();
         if (winner !== null && !(solo && winner === 1)) setTimeout(() => sfx.bell(), 350); else if (winner === 1) setTimeout(() => sfx.sad(), 350);
       }
     } else { if (!res.hidden) res.hidden = true; this.shownResult = null; }
+    text('again', online ? '재대결' : '한 판 더'); text('change', online ? '방 나가기' : '지우개 바꾸기');
+    if (online && over) {
+      const r = this.lobby.room, me = r && r.seats[g.mySeat], op = r && r.seats[1 - g.mySeat];
+      text('resultExtra', !op ? '상대가 나가서 재대결할 수 없어요' : me && me.rematch && !op.rematch ? '재대결 신청함 · 상대를 기다리는 중' : op.rematch && !(me && me.rematch) ? '상대가 재대결을 원해요!' : '');
+      put('again', 'd', !op, (e, x) => { e.disabled = x; });
+    } else put('again', 'd', false, (e, x) => { e.disabled = x; });
     put('retry', 'h', !(g.stuck && g.phase === PHASE.PHYSICS), (e, x) => { e.hidden = x; });
     if (!$('dev').hidden) {
       for (const [k] of SETTING_DEFS) {

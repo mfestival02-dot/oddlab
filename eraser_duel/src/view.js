@@ -252,7 +252,8 @@ export class View {
     this.renderer.render(this.scene, this.camera);
   }
   _camera(game, bodies, dt) {
-    const C = this.cam, K = this.cine, me = bodies[game.player], op = bodies[1 - game.player];
+    const seat = game.viewSeat ?? game.player;                 // 온라인에서는 늘 내 자리에서 본다
+    const C = this.cam, K = this.cine, me = bodies[seat], op = bodies[1 - seat];
     const on = (b) => b.p[1] > GEOM.fallY;
     // 시점 방향: 현재 플레이어 뒤에서 상대 쪽을 본다. 발사 뒤에는 방향을 바꾸지 않는다.
     let swing = 0;
@@ -272,7 +273,7 @@ export class View {
     K.zoom += ((K.zoomT > 0 ? 1 : 0) - K.zoom) * (1 - Math.exp(-(K.zoomT > 0 ? 9 : 4) * dt));
     const dist = (aiming ? 2.3 + spread * 0.55 : 2.8 + spread * 0.75) * narrow * (1 - 0.42 * K.zoom);
     const fx = Math.cos(C.az), fz = Math.sin(C.az);
-    const focus = aiming && on(me) ? [me.p[0] * 0.55 + cx * 0.45, me.p[2] * 0.55 + cz * 0.45] : [cx, cz];
+    const focus = aiming && on(me) ? [me.p[0] * 0.3 + cx * 0.7, me.p[2] * 0.3 + cz * 0.7] : [cx, cz];   // 멀리 떨어져 시작해도 둘 다 화면에 들어오게
     const wantPos = new THREE.Vector3(focus[0] - fx * dist, 0.9 + dist * (0.5 - 0.14 * K.zoom) + swing * 0.55, focus[1] - fz * dist);
     const wantLook = new THREE.Vector3(focus[0] + fx * 0.35 * (1 - K.zoom), 0.05 + 0.1 * K.zoom, focus[1] + fz * 0.35 * (1 - K.zoom));
     // 떨어지는 지우개: 책상 가장자리에서 내려다보며 따라간다

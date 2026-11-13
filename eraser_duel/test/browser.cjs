@@ -24,6 +24,10 @@ const out = path.join(__dirname, '..', 'shots');
   await p.keyboard.press('Space'); await p.waitForTimeout(150);
   let s0 = await st();
   log('B0. 표지 → 지우개 고르기 → 놀이 순서로 넘어가고, 그 Space로 게이지가 시작되지는 않는다', pickShown && s0.phase === 'aim' && (await p.isHidden('#start')) && (await p.isHidden('#pick')));
+  // 이 시험은 올라타기를 반복 확인해야 하므로 가까운 검증 배치를 쓴다(일반 경기는 40cm 떨어져 시작)
+  const farStart = await p.evaluate(() => Math.abs(__game.game.curr[0].p[0] - __game.game.curr[1].p[0]));
+  await p.evaluate(() => { __game.localGame.layoutMode = 'near'; __game.localGame.restart(); __game.view.resetCamera(); });
+  log('B0b. 일반 경기는 멀리 떨어져 시작한다', farStart > 3.5, `두 지우개 사이 ${(farStart * 10).toFixed(0)}cm`);
   // 연출이 실제로 나오는지 세어 둔다
   await p.evaluate(() => { const u = __game.ui, o = u.pop.bind(u); window.__pops = []; u.pop = (t, ...a) => { __pops.push(t); o(t, ...a); }; window.__slowSeen = 0; window.__maxBits = 0; window.__hop = false; const f = () => { if (document.body.classList.contains('slow')) __slowSeen++; __maxBits = Math.max(__maxBits, __game.view.fx.bitC.items.length); if (__game.view.hop) __hop = true; requestAnimationFrame(f); }; f(); });
   await p.waitForTimeout(1700);
@@ -139,7 +143,7 @@ const out = path.join(__dirname, '..', 'shots');
   for (let i = 0; i < 3; i++) {
     await p.click(i === 0 ? '#dbgPresetFire' : '#dbgReplay');
     await p.waitForFunction(() => __game.game.phase === 'result');
-    finals.push(await p.evaluate(() => ({ r: __game.game.result, p: __game.game.lastShot && __game.game.curr[0].p, ticks: Math.round(__game.game.timers.phys * 120) })));
+    finals.push(await p.evaluate(() => ({ r: __game.game.result, p: __game.game.lastShot && __game.game.curr[0].p, ticks: Math.round(__game.game.timers.phys * 240) })));
     if (i === 0) { await p.waitForTimeout(500); await p.screenshot({ path: path.join(out, '07_dev_panel_preset.png') }); }
   }
   log('B14. 프리셋 발사와 "같은 조건으로 다시 발사"가 브라우저에서 같은 결과를 낸다', finals.every((f) => f.r.reason === 'perch' && f.r.winner === 0 && f.ticks === finals[0].ticks), `승리 확정까지 걸음 수 ${finals.map((f) => f.ticks).join(' / ')}`);

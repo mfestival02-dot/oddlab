@@ -5,15 +5,19 @@ import { UI } from './ui.js';
 import { Sfx } from './sound.js';
 import { Planner } from './ai.js';
 import { TYPES } from './config.js';
+import { Net, NetGame } from './net.js';
+import { Lobby } from './lobby.js';
 
 async function main() {
   await RAPIER.init();
-  const game = new Game(RAPIER);
+  const localGame = new Game(RAPIER);
+  localGame.layoutMode = 'match';          // 일반 경기는 멀리 떨어져 시작한다(개발자 패널의 프리셋은 가까운 검증 배치)
+  let game = localGame;
   const view = new View(document.getElementById('app'));
   const sfx = new Sfx();
   const fx = view.fx;
   let ui = null;
-  const cpuTurn = () => ui.mode === 'solo' && game.player === 1;
+  const cpuTurn = () => (ui.mode === 'solo' && game.player === 1) || (game.online && !game.canAct());
 
   // ---------- 입력: 길게 눌러도 한 번, 차례가 바뀌면 눌린 상태를 버린다 ----------
   const input = {
@@ -28,18 +32,19 @@ async function main() {
       if (r === 'gauge') sfx.click();
       return r;
     },
-    restart() { if (!ui.started) return; game.restart(); this.clear(); view.resetCamera(); },
+    restart() { if (!ui.started || game.online) return; game.restart(); this.clear(); view.resetCamera(); },
   };
   const slow = { t: 0, used: false, scale: 1 };
   const cpu = { state: 'idle', t: 0, planner: null, shot: null, prevGauge: 0 };
   let popAt = 0, heartAt = 0;
 
-  game.onEvent = (type) => {
+  const onGameEvent = (type) => {
     if (type === 'turn' || type === 'restart' || type === 'restore' || type === 'result') input.clear();
     if (type === 'restart' || type === 'restore') { slow.t = 0; slow.used = false; cpu.state = 'idle'; view.hop = null; view.cine.fall = null; }
     if (!ui || !ui.started) return;
-    if (type === 'turn') { ui.banner(cpuTurn() ? '컴퓨터 차례!' : `${PLAYER[game.player].name} 차례!`); sfx.scratch(); }
-    if (type === 'restart') { ui.banner('1P 차례!', '한 판 더'); sfx.scratch(); }
+    const turnText = () => (game.online ? (game.canAct() ? '내 차례!' : `${game.names[game.player] || '상대'} 차례!`) : cpuTurn() ? '컴퓨터 차례!' : `${PLAYER[game.player].name} 차례!`);
+    if (type === 'turn') { ui.banner(turnText()); sfx.scratch(); }
+    if (type === 'restart') { if (game.online) setTimeout(() => ui.banner(turnText(), '온라인 한 판'), 60); else ui.banner('1P 차례!', '한 판 더'); sfx.scratch(); }
     if (type === 'result') {
       const { winner, reason } = game.result;
       if (winner !== null) {
@@ -78,7 +83,18 @@ async function main() {
   });
   addEventListener('blur', () => { input.clear(); input.spaceDown = false; });
 
+  localGame.onEvent = onGameEvent;
   ui = new UI(game, view, input, sfx);
+  // 온라인: 서버가 보내는 상태를 받아 그리는 대리 게임으로 바꿔 끼운다
+  const net = new Net(), netGame = new NetGame(net);
+  netGame.onEvent = onGameEvent;
+  const useGame = (g) => { game = g; ui.game = g; view.resetCamera(); input.clear(); slow.t = 0; };
+  ui.lobby = new Lobby(net, netGame, sfx, {
+    start(m, seat) { ui.mode = 'online'; ui.started = true; useGame(netGame); netGame.onMatch(m, seat); document.getElementById('pick').hidden = true; document.getElementById('start').hidden = true; },
+    exit() { ui.started = false; ui.mode = 'versus'; useGame(localGame); },
+    notice(t) { ui.banner('알림', t); },
+  });
+  if (new URLSearchParams(location.search).get('room')) ui.lobby.open();          // 초대 링크로 들어온 경우
 
   // ---------- 컴퓨터 차례: 방향을 재고 → 게이지를 보다가 → 튕긴다 ----------
   function turnToward(target, maxStep) {
@@ -87,9 +103,9 @@ async function main() {
     return Math.abs(d) < 0.01;
   }
   function driveCpu(dt) {
-    if (!ui.started || !cpuTurn()) { cpu.state = 'idle'; return; }
+    if (!ui.started || game.online || !cpuTurn()) { cpu.state = 'idle'; return; }
     if (game.phase === PHASE.AIM) {
-      if (cpu.state === 'idle') { cpu.planner = new Planner(RAPIER, game, 0.72); cpu.state = 'think'; cpu.t = 0; }
+      if (cpu.state === 'idle') { cpu.planner = new Planner(RAPIER, game, 0.4); cpu.state = 'think'; cpu.t = 0; }
       cpu.t += dt;
       if (cpu.state === 'think') {
         const done = cpu.planner.step(5);
@@ -166,7 +182,7 @@ async function main() {
     slow.scale += ((slow.t > 0 ? 0.2 : 1) - slow.scale) * (1 - Math.exp(-16 * dt));
     document.body.classList.toggle('slow', slow.t > 0);
 
-    const alpha = game.advance(dt * slow.scale);
+    const alpha = game.advance(game.online ? dt : dt * slow.scale);       // 온라인은 서버 시간에 맞춰야 하므로 느리게 흘리지 않는다
     playEvents(now);
     const bodies = game.curr.map((c, i) => {
       const p = game.prev[i];
@@ -186,7 +202,7 @@ async function main() {
     requestAnimationFrame(frame);
   }
   document.getElementById('loading').remove();
-  window.__game = { game, input, view, ui, sfx, slow, cpu, PHASE };
+  window.__game = { get game() { return game; }, localGame, netGame, net, input, view, ui, sfx, slow, cpu, PHASE };
   requestAnimationFrame(frame);
 }
 main().catch((e) => { console.error(e); document.getElementById('loading').textContent = '불러오지 못했습니다: ' + e.message; });
