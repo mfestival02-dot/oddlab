@@ -83,9 +83,8 @@ export class View {
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
     container.appendChild(r.domElement);
     const scene = this.scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xcfc4b3);
-    scene.fog = new THREE.Fog(0xcfc4b3, 30, 90);
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 200);
+    scene.background = new THREE.Color(0xf1ead9);
+    this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 260);
 
     scene.add(new THREE.HemisphereLight(0xfff4e2, 0x8a7a6a, 1.15));
     const sun = new THREE.DirectionalLight(0xfff1d6, 2.6);
@@ -164,27 +163,99 @@ export class View {
     const shelf = new THREE.Mesh(new THREE.BoxGeometry(D.hx * 2 - 0.5, 0.06, D.hz * 2 - 0.5), metal);
     shelf.position.y = -1.3; s.add(shelf);
   }
+  // 교실: 우리 책상은 한가운데 줄에 있다. 칠판은 -z 쪽, 창문은 -x 쪽.
   _room() {
-    const s = this.scene;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), new THREE.MeshStandardMaterial({ color: 0xa98a63, roughness: 0.75 }));
-    floor.rotation.x = -Math.PI / 2; floor.position.y = GEOM.floorY; floor.receiveShadow = true; s.add(floor);
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(160, 60), new THREE.MeshStandardMaterial({ color: 0xe9e2d2, roughness: 0.9 }));
-    wall.position.set(0, 14, -34); s.add(wall);
-    const board = new THREE.Mesh(new THREE.BoxGeometry(34, 11, 0.4), new THREE.MeshStandardMaterial({ color: 0x2f5a46, roughness: 0.85 }));
-    board.position.set(0, 9, -33.6);
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(35.2, 12.2, 0.3), new THREE.MeshStandardMaterial({ color: 0xb98a55, roughness: 0.7 }));
-    frame.position.set(0, 9, -33.8); s.add(frame, board);
-    // 다른 책상과 의자: 단순한 덩어리로만
-    const dMat = new THREE.MeshStandardMaterial({ color: 0xc99a5e, roughness: 0.7 }), cMat = new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 0.8 });
-    for (let ix = -2; ix <= 2; ix++) for (let iz = -2; iz <= 1; iz++) {
-      if (ix === 0 && iz === 0) continue;
-      const d = new THREE.Mesh(new THREE.BoxGeometry(6, 0.25, 4), dMat);
-      d.position.set(ix * 11, -0.125, iz * 9.5);
-      const c = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.3, 3.2), cMat);      // 의자 앉는 판만
-      c.position.set(ix * 11, -2.6, iz * 9.5 + 3.6);
-      s.add(d, c);
+    const s = this.scene, F = GEOM.floorY, std = (color, rough = 0.8) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); s.add(m); return m; };
+    const W = 46, ZF = -44, ZB = 40, H = 30;                       // 반폭, 앞벽, 뒷벽, 천장 높이(바닥 기준)
+    // 바닥(나무 마루)
+    const floorTex = canvasTex(512, 512, (g, w, h) => {
+      for (let y = 0; y < h; y += 64) for (let x = -((y / 64) % 2) * 128; x < w; x += 256) {
+        const v = 150 + Math.floor(R(0, 24)); g.fillStyle = `rgb(${v + 28},${v - 6},${v - 58})`; g.fillRect(x, y, 256, 64);
+        g.fillStyle = 'rgba(60,35,10,0.35)'; g.fillRect(x, y, 256, 2); g.fillRect(x, y, 2, 64);
+      }
+    });
+    floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping; floorTex.repeat.set(9, 8);
+    const floor = add(new THREE.PlaneGeometry(W * 2, ZB - ZF), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.6 }), 0, F, (ZF + ZB) / 2);
+    floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
+    // 벽과 천장
+    const wall = std(0xf1ead9, 0.95), dado = std(0xc9d8c2, 0.9);
+    add(new THREE.PlaneGeometry(W * 2, H), wall, 0, F + H / 2, ZF);
+    add(new THREE.PlaneGeometry(W * 2, H), wall, 0, F + H / 2, ZB).rotation.y = Math.PI;
+    add(new THREE.PlaneGeometry(ZB - ZF, H), wall, W, F + H / 2, (ZF + ZB) / 2).rotation.y = -Math.PI / 2;
+    add(new THREE.PlaneGeometry(ZB - ZF, H), wall, -W, F + H / 2, (ZF + ZB) / 2).rotation.y = Math.PI / 2;
+    add(new THREE.PlaneGeometry(W * 2, 8), dado, 0, F + 4, ZF + 0.05);
+    add(new THREE.PlaneGeometry(ZB - ZF, 8), dado, W - 0.05, F + 4, (ZF + ZB) / 2).rotation.y = -Math.PI / 2;
+    add(new THREE.PlaneGeometry(ZB - ZF, 8), dado, -W + 0.05, F + 4, (ZF + ZB) / 2).rotation.y = Math.PI / 2;
+    add(new THREE.PlaneGeometry(W * 2, ZB - ZF), std(0xf6f2e8, 1), 0, F + H, (ZF + ZB) / 2).rotation.x = Math.PI / 2;
+    for (const x of [-22, 0, 22]) for (const z of [-24, -2, 20]) add(new THREE.BoxGeometry(12, 0.3, 2.2), new THREE.MeshBasicMaterial({ color: 0xfffbea }), x, F + H - 0.2, z);   // 형광등
+    // 칠판, 분필 받침, 교탁, 시계
+    const boardTex = canvasTex(1024, 320, (g, w, h) => {
+      g.fillStyle = '#2f5a46'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(255,255,255,${R(0.02, 0.06)})`; g.fillRect(R(0, w), R(0, h), R(60, 260), R(6, 22)); }
+      g.fillStyle = 'rgba(245,245,235,0.9)'; g.font = `700 46px ${FONT}`; g.fillText('오늘의 쉬는 시간: 지우개 따먹기', 60, 90);
+      g.font = `700 34px ${FONT}`; g.fillStyle = 'rgba(255,230,150,0.9)'; g.fillText('떠든 사람: 나, 너', 60, 160);
+      g.strokeStyle = 'rgba(245,245,235,0.8)'; g.lineWidth = 4; g.strokeRect(760, 60, 200, 200); g.fillStyle = 'rgba(245,245,235,0.9)'; g.fillText('당번', 820, 110);
+    });
+    add(new THREE.BoxGeometry(46, 15, 0.5), std(0xa9773f, 0.7), 0, F + 16, ZF + 0.3);
+    add(new THREE.PlaneGeometry(44, 13), new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.9 }), 0, F + 16, ZF + 0.6);
+    add(new THREE.BoxGeometry(44, 0.5, 1.2), std(0xa9773f, 0.7), 0, F + 9.2, ZF + 0.9);
+    add(new THREE.BoxGeometry(9, 9.5, 5), std(0xb98a55, 0.7), 14, F + 4.75, ZF + 9);
+    const clock = add(new THREE.CylinderGeometry(2, 2, 0.3, 32), std(0xfffdf5, 0.5), 30, F + 24, ZF + 0.3); clock.rotation.x = Math.PI / 2;
+    add(new THREE.BoxGeometry(0.15, 1.5, 0.1), std(0x222222), 30, F + 24.6, ZF + 0.5); add(new THREE.BoxGeometry(1.1, 0.15, 0.1), std(0x222222), 30.5, F + 24, ZF + 0.5);
+    // 창문(-x 벽): 밝은 하늘과 창틀
+    const sky = canvasTex(256, 256, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#9fd2ff'); gr.addColorStop(0.7, '#e6f5ff'); gr.addColorStop(1, '#cfe8c8'); g.fillStyle = gr; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(255,255,255,0.9)'; for (const [x, y, r] of [[60, 70, 26], [95, 62, 34], [135, 74, 24], [190, 120, 20], [215, 114, 26]]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } });
+    for (const z of [-28, -6, 16]) {
+      const win = add(new THREE.PlaneGeometry(17, 13), new THREE.MeshBasicMaterial({ map: sky }), -W + 0.1, F + 16, z); win.rotation.y = Math.PI / 2;
+      for (const [w2, h2, dy, dz] of [[18, 0.7, 6.6, 0], [18, 0.7, -6.6, 0], [0.7, 13.6, 0, 8.6], [0.7, 13.6, 0, -8.6], [0.5, 13, 0, 0]]) add(new THREE.BoxGeometry(0.4, h2, w2 === 0.7 || w2 === 0.5 ? w2 : w2), std(0xfdfaf2, 0.6), -W + 0.3, F + 16 + dy, z + dz);
     }
+    // 뒷벽: 사물함과 게시판
+    const locker = std(0xd9c7a2, 0.75);
+    for (let i = -6; i <= 6; i++) for (let j = 0; j < 2; j++) { add(new THREE.BoxGeometry(6.2, 5.6, 3.5), locker, i * 6.6, F + 2.9 + j * 5.9, ZB - 1.9); add(new THREE.BoxGeometry(0.5, 0.5, 0.2), std(0x7a6a55), i * 6.6 + 2.2, F + 2.9 + j * 5.9, ZB - 3.7); }
+    add(new THREE.BoxGeometry(40, 10, 0.3), std(0x9cc5a1, 0.95), 0, F + 19, ZB - 0.3);
+    for (let i = 0; i < 9; i++) add(new THREE.BoxGeometry(3.4, 4.4, 0.1), std([0xfff3b0, 0xffd0d8, 0xcfe6ff, 0xffffff][i % 4], 0.9), -16 + i * 4, F + 19 + (i % 2 ? 0.6 : -0.4), ZB - 0.5).rotation.z = (i % 3 - 1) * 0.06;
+    // 문(+x 벽)
+    add(new THREE.BoxGeometry(0.4, 20, 9), std(0x9a7446, 0.7), W - 0.2, F + 10, ZF + 12);
+    // 책상과 의자 줄: 한 번에 그리는 묶음으로 만든다
+    const deskTop = new THREE.BoxGeometry(6, 0.25, 4), leg = new THREE.CylinderGeometry(0.1, 0.1, -F - 0.25, 8);
+    const seat = new THREE.BoxGeometry(3.6, 0.3, 3.4), back = new THREE.BoxGeometry(3.6, 2.4, 0.3), cleg = new THREE.CylinderGeometry(0.09, 0.09, 4.2, 8);
+    const spots = [];
+    for (let ix = -3; ix <= 3; ix++) for (let iz = -2; iz <= 2; iz++) spots.push([ix * 12, iz * 14.5, ix === 0 && iz === 0]);
+    const others = spots.filter((p) => !p[2]), n = others.length, m4 = new THREE.Matrix4();
+    const inst = (geo, mat, count) => { const im = new THREE.InstancedMesh(geo, mat, count); im.receiveShadow = true; s.add(im); return im; };
+    const tops = inst(deskTop, std(0xd3a468, 0.6), n), legs = inst(leg, std(0x6f7780, 0.45), n * 4);
+    const seats = inst(seat, std(0xc08f57, 0.7), spots.length), backs = inst(back, std(0xc08f57, 0.7), spots.length), clegs = inst(cleg, std(0x6f7780, 0.45), spots.length * 4);
+    others.forEach(([x, z], i) => {
+      tops.setMatrixAt(i, m4.makeTranslation(x, -0.125, z));
+      [[-2.7, -1.7], [2.7, -1.7], [-2.7, 1.7], [2.7, 1.7]].forEach(([dx, dz], k) => legs.setMatrixAt(i * 4 + k, m4.makeTranslation(x + dx, (F - 0.25) / 2, z + dz)));
+    });
+    spots.forEach(([x, z], i) => {
+      seats.setMatrixAt(i, m4.makeTranslation(x, F + 4.3, z + 5.6)); backs.setMatrixAt(i, m4.makeTranslation(x, F + 6.0, z + 7.2));
+      [[-1.6, 4.1], [1.6, 4.1], [-1.6, 7.1], [1.6, 7.1]].forEach(([dx, dz], k) => clegs.setMatrixAt(i * 4 + k, m4.makeTranslation(x + dx, F + 2.1, z + dz)));
+    });
+    // 옆 책상 위의 물건들
+    const stuff = [[0xff8a8a, 3, 0.25, 2.1], [0x8ab6ff, 2.6, 0.35, 1.9], [0xffe08a, 1.9, 0.5, 0.8], [0x9be0a8, 2.8, 0.2, 2.0], [0xd7b8ff, 1.6, 0.6, 0.7]];
+    others.forEach(([x, z], i) => { if (i % 3 === 1) return; const [c, w2, h2, d2] = stuff[i % stuff.length]; const m = add(new THREE.BoxGeometry(w2, h2, d2), std(c, 0.7), x + R(-1.2, 1.2), h2 / 2, z + R(-0.6, 0.6)); m.rotation.y = R(-0.5, 0.5); });
+    // 가방 몇 개
+    for (const i of [2, 7, 13, 20, 26, 33]) { const p = others[i]; if (p) add(new THREE.BoxGeometry(2.6, 3.2, 1.2), std([0x3d6fb5, 0xd95b5b, 0x4a9a6a][i % 3], 0.85), p[0] + 3.6, F + 1.6, p[1] + 1); }
   }
+  // 지우개 고르기 화면용 작은 그림
+  thumb(type, side) {
+    const key = type + side; this._thumbs = this._thumbs || {};
+    if (this._thumbs[key]) return this._thumbs[key];
+    if (!this._tr) {
+      this._tr = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); this._tr.setSize(200, 130); this._tr.toneMapping = THREE.ACESFilmicToneMapping;
+      this._ts = new THREE.Scene(); this._ts.add(new THREE.HemisphereLight(0xffffff, 0x998877, 1.6)); const d = new THREE.DirectionalLight(0xffffff, 2.2); d.position.set(-2, 4, 3); this._ts.add(d);
+      this._tc = new THREE.PerspectiveCamera(28, 200 / 130, 0.1, 20); this._tc.position.set(0.9, 0.85, 1.25); this._tc.lookAt(0, 0, 0);
+    }
+    const keep = this.scene; this.scene = this._ts;
+    const mesh = this._eraser(PLAYER[side], TYPES[type]);
+    this.scene = keep;
+    mesh.rotation.y = 0.5; this._tr.render(this._ts, this._tc);
+    this._ts.remove(mesh);
+    return (this._thumbs[key] = this._tr.domElement.toDataURL('image/png'));
+  }
+
   // 지우개 종류가 바뀌면 모양을 다시 만든다
   setTypes(types) {
     if (this.types && this.types[0] === types[0] && this.types[1] === types[1]) return;
@@ -271,11 +342,13 @@ export class View {
     // 느린 화면일 때는 두 지우개 쪽으로 바짝 다가간다
     K.zoomT = Math.max(0, K.zoomT - dt);
     K.zoom += ((K.zoomT > 0 ? 1 : 0) - K.zoom) * (1 - Math.exp(-(K.zoomT > 0 ? 9 : 4) * dt));
-    const dist = (aiming ? 2.3 + spread * 0.55 : 2.8 + spread * 0.75) * narrow * (1 - 0.42 * K.zoom);
+    // 조준할 때는 누름 자리가 잘 보이도록 내 지우개 쪽으로 다가가고, 튕긴 뒤에는 물러나 둘 다 보여 준다
+    const dist = (aiming ? 1.75 + spread * 0.16 : 2.8 + spread * 0.75) * narrow * (1 - 0.42 * K.zoom);
     const fx = Math.cos(C.az), fz = Math.sin(C.az);
-    const focus = aiming && on(me) ? [me.p[0] * 0.3 + cx * 0.7, me.p[2] * 0.3 + cz * 0.7] : [cx, cz];   // 멀리 떨어져 시작해도 둘 다 화면에 들어오게
-    const wantPos = new THREE.Vector3(focus[0] - fx * dist, 0.9 + dist * (0.5 - 0.14 * K.zoom) + swing * 0.55, focus[1] - fz * dist);
-    const wantLook = new THREE.Vector3(focus[0] + fx * 0.35 * (1 - K.zoom), 0.05 + 0.1 * K.zoom, focus[1] + fz * 0.35 * (1 - K.zoom));
+    const focus = aiming && on(me) ? [me.p[0] * 0.86 + cx * 0.14, me.p[2] * 0.86 + cz * 0.14] : [cx, cz];
+    const wantPos = new THREE.Vector3(focus[0] - fx * dist, (aiming ? 0.55 : 0.9) + dist * (0.5 - 0.14 * K.zoom) + swing * 0.55, focus[1] - fz * dist);
+    const ahead = aiming ? 0.9 : 0.35;
+    const wantLook = new THREE.Vector3(focus[0] + fx * ahead * (1 - K.zoom), 0.05 + 0.1 * K.zoom, focus[1] + fz * ahead * (1 - K.zoom));
     // 떨어지는 지우개: 책상 가장자리에서 내려다보며 따라간다
     if (K.fall) {
       K.fall.t += dt;

@@ -6,6 +6,9 @@ import { SUCCESS_PRESET } from './preset.js';
 import { yawQuat } from './sim.js';
 import { initialLayout, TYPES, TYPE_KEYS, HITS } from './config.js';
 import { loadMeta, applyResult } from './meta.js';
+import { eraserCard } from './cards.js';
+
+const KIND = { 끝: ['k-end', '#58b96a', '끝', '곧게 나가요 (쉬움)'], 옆: ['k-side', '#f0b83a', '옆', '세게 누르면 데굴데굴 굴러요'], 꼭짓점: ['k-corner', '#e2473a', '꼭짓점', '높이 뜨고 어디로 튈지 몰라요 (어려움)'], 안쪽: ['k-in', '#4a8fe0', '안쪽', '낮게 미끄러져요'] };
 
 const $ = (id) => document.getElementById(id);
 const deg = (r) => (r * 180) / Math.PI, rad = (d) => (d * Math.PI) / 180;
@@ -20,14 +23,20 @@ export class UI {
     this.game = game; this.view = view; this.input = input; this.sfx = sfx;
     this.started = false; this.shownResult = null; this.lastTick = -1;
     this.mode = 'versus'; this.picks = ['normal', 'normal']; this.meta = loadMeta(); this.lastStatus = '';
-    $('fire').addEventListener('click', () => input.press());
+    // 꾹 누르기: 버튼을 누르고 있는 동안 힘이 차고, 떼면 튕긴다
+    const fire = $('fire');
+    fire.addEventListener('pointerdown', (e) => { e.preventDefault(); input.down(); });
+    fire.addEventListener('keydown', (e) => { if ((e.key === 'Enter') && !e.repeat) input.down(); });
+    fire.addEventListener('keyup', (e) => { if (e.key === 'Enter') input.up(); });
+    addEventListener('pointerup', () => input.up()); addEventListener('pointercancel', () => input.up());
+    $('left').addEventListener('click', () => input.cycle(-1));
+    $('right').addEventListener('click', () => input.cycle(1));
     $('again').addEventListener('click', () => { sfx.click(); this.rematch(); });
     $('change').addEventListener('click', () => { sfx.click(); if (this.mode === 'online') this.lobby.net.send({ t: 'leave' }); else this.showPick(this.mode); });
     $('onlineBtn').addEventListener('click', () => { sfx.init(); sfx.click(); this.lobby.open(); });
     $('soloBtn').addEventListener('click', () => { sfx.init(); sfx.click(); this.showPick('solo'); });
     $('goBtn').addEventListener('click', () => this.begin());
     $('backBtn').addEventListener('click', () => { sfx.click(); $('pick').hidden = true; $('start').hidden = false; });
-    document.querySelectorAll('#hits [data-h]').forEach((b) => b.addEventListener('click', () => { if (!input.locked()) { game.setHit(Number(b.dataset.h)); sfx.click(); } }));
     document.addEventListener('click', (e) => { const b = e.target.closest('.btn'); if (b && !b.classList.contains('go')) { b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); } });
     $('retryBtn').addEventListener('click', () => { game.retryTurn(); input.clear(); });
     $('startBtn').addEventListener('click', () => { sfx.init(); sfx.click(); this.showPick('versus'); });
@@ -36,14 +45,7 @@ export class UI {
       $('mute').textContent = sfx.muted ? '소리 끔' : '소리 켬'; $('mute').setAttribute('aria-pressed', String(sfx.muted));
       sfx.click();
     });
-    for (const [id, dir] of [['left', -1], ['right', 1]]) {
-      const b = $(id);
-      const on = (e) => { input.hold = dir; e.preventDefault(); };
-      const off = () => { if (input.hold === dir) input.hold = 0; };
-      b.addEventListener('pointerdown', on);
-      ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, off));
-      b.addEventListener('keydown', (e) => { if (e.key === 'Enter') { game.turn(dir, 0.05); } });
-    }
+    this.spotEls = [];
     $('devBtn').addEventListener('click', () => this.toggleDev());
     $('gaugeNums').innerHTML = Array.from({ length: 9 }, (_, i) => `<i style="left:${i * 10}%">${i}</i>`).join('');
     const C = 2 * Math.PI * 62;
@@ -60,22 +62,21 @@ export class UI {
     if (solo) this.picks[1] = TYPE_KEYS[Math.floor(Math.random() * TYPE_KEYS.length)];
     $('pickTitle').textContent = solo ? '필통에서 지우개 고르기' : '지우개 고르기';
     $('pickInfo').textContent = solo ? `이기면 상대 지우개를 따고, 지면 내 지우개를 뺏겨요. (${this.meta.wins}승 ${this.meta.losses}패)` : '둘이서 하나씩 골라요.';
-    $('pickH0').textContent = solo ? '내 지우개 (1P)' : '1P 지우개';
-    $('pickH1').textContent = solo ? '컴퓨터가 꺼낸 지우개' : '2P 지우개';
+    const head = (id, label, k) => { $(id).textContent = `${label}: ${TYPES[k].name} `; $(id).append(el('span', { className: 'pickDesc', textContent: TYPES[k].desc })); };
+    head('pickH0', solo ? '내 지우개 (1P)' : '1P 지우개', this.picks[0]); head('pickH1', solo ? '컴퓨터가 꺼낸 지우개' : '2P 지우개', this.picks[1]);
     for (const side of [0, 1]) {
       const box = $('cards' + side); box.innerHTML = '';
       for (const k of TYPE_KEYS) {
-        const T = TYPES[k], locked = solo && (side === 0 ? !(own[k] > 0) : k !== this.picks[1]);
-        const c = el('button', { className: 'card' + (this.picks[side] === k ? ' sel' : ''), disabled: locked });
-        c.style.setProperty('--c', PLAYER[side].css);
-        c.append(el('i'), T.name, el('small', { textContent: T.desc }));
-        if (solo && side === 0) c.append(el('em', { textContent: own[k] > 0 ? '×' + own[k] : '없음' }));
+        const locked = solo && (side === 0 ? !(own[k] > 0) : k !== this.picks[1]);
+        const c = eraserCard(this.view, k, side, { selected: this.picks[side] === k, disabled: locked, badge: solo && side === 0 ? (own[k] > 0 ? '×' + own[k] : '없음') : '' });
         c.addEventListener('click', () => { if (solo && side === 1) return; this.picks[side] = k; this.sfx.click(); this.showPick(mode); });
         box.append(c);
       }
     }
   }
   begin() {
+    if ($('pick').hidden) return;                 // 이미 시작했으면 다시 시작하지 않는다
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();   // 버튼에 남은 초점 때문에 Space가 버튼을 다시 누르지 않게
     $('pick').hidden = true;
     this.game.types = [...this.picks];
     this.started = true;
@@ -262,8 +263,8 @@ export class UI {
     const T = g.timers, S = g.applied;
     let main = '', sub = '';
     const perching = g.phase === PHASE.PHYSICS && !g.sim.fallen[0] && !g.sim.fallen[1] && g.info.upper !== null && T.perch > 0.05;
-    if (g.phase === PHASE.AIM) { main = cpuTurn ? `${other}가 방향을 재는 중…` : `${online ? '내 차례' : pl.name}: 방향을 정하고 게이지를 시작하세요`; sub = cpuTurn ? '' : '상대 지우개 위에 올라타면 승리'; }
-    else if (g.phase === PHASE.POWER) { main = cpuTurn ? `${other}가 세기를 재는 중…` : '눈금을 보고 튕기세요!'; sub = cpuTurn ? '' : '빨간 칸은 책상 밖으로 날아갈 수 있어요'; }
+    if (g.phase === PHASE.AIM) { main = cpuTurn ? `${other}가 누를 곳을 고르는 중…` : `${online ? '내 차례' : pl.name}: 누를 곳을 고르고 꾹 누르세요`; sub = cpuTurn ? '' : '상대 지우개 위에 올라타면 승리'; }
+    else if (g.phase === PHASE.POWER) { main = cpuTurn ? `${other}가 꾹 누르는 중…` : '꾹… 떼면 튕겨요!'; sub = cpuTurn ? '' : '세게 누를수록 멀리, 높이 튀어요'; }
     else if (g.phase === PHASE.PHYSICS) {
       if (g.sim.fallen[0] || g.sim.fallen[1]) main = '앗, 떨어졌다…';
       else if (perching) { main = '걸침 확인 중…'; sub = `${who(g.info.upper)}가 위 · ${T.perch.toFixed(1)} / ${S.perchHold.toFixed(1)}초`; }
@@ -271,11 +272,29 @@ export class UI {
     } else main = '경기 끝';
     text('statusText', main); text('statusSub', sub);
     if (main !== this.lastStatus) { this.lastStatus = main; const st = $('status'); st.classList.remove('flip'); void st.offsetWidth; st.classList.add('flip'); }
-    // 누르는 곳
-    document.querySelectorAll('#hits [data-h]').forEach((b) => { const h = Number(b.dataset.h); put('hit' + h, 'sel', g.hit === h, () => b.classList.toggle('sel', g.hit === h)); put('hit' + h, 'dis', g.phase !== PHASE.AIM || cpuTurn || !this.started, (_e, x) => { b.disabled = x; }); });
-    text('hitDesc', HITS[g.hit].desc);
-    put('status', 'h', over, (e, x) => { e.hidden = x; });
-
+    // 누름 자리: 지우개 위에 점으로 보여 주고, 눌러서 고른다
+    const aimingNow = this.started && (g.phase === PHASE.AIM || g.phase === PHASE.POWER) && bodies && bodies[g.player].p[1] > -0.3;
+    const list = aimingNow ? g.spots() : [];
+    while (this.spotEls.length < list.length) {
+      const i = this.spotEls.length, b = el('button', { className: 'spot' });
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.input.cycleTo(i); this.input.down(); });
+      $('spots').append(b); this.spotEls.push(b);
+    }
+    this.spotEls.forEach((b, i) => {
+      const sp = list[i];
+      put('sp' + i, 'h', !sp, () => { b.hidden = !sp; });
+      if (!sp) return;
+      const sc = this.view.project(sp.p[0], sp.p[1], sp.p[2]);
+      b.style.left = sc.x.toFixed(1) + 'px'; b.style.top = sc.y.toFixed(1) + 'px';
+      const sel = g.spot === i, K = KIND[sp.kind];
+      put('sp' + i, 'c', K[0] + (sel ? ' sel' : '') + (sel && g.phase === PHASE.POWER ? ' pressing' : ''), (_e, x) => { b.className = 'spot ' + x; });
+      put('sp' + i, 'd', cpuTurn || g.phase !== PHASE.AIM, (_e, x) => { b.disabled = x; });
+      put('sp' + i, 'a', `${K[2]} 자리`, (_e, x) => b.setAttribute('aria-label', x));
+      if (sel && g.phase === PHASE.POWER) b.style.setProperty('--f', g.gauge.value.toFixed(2));
+    });
+    const cur = list[g.spot];
+    put('spotInfo', 'h', !cur, (e, x) => { e.style.visibility = x ? 'hidden' : 'visible'; });
+    if (cur) { const K = KIND[cur.kind]; text('spotName', `누르는 곳: ${K[2]}`); text('spotDesc', K[3]); put('spotDot', 'c', K[1], (e, x) => { e.style.background = x; }); }
     // 자 게이지
     const pw = g.phase === PHASE.POWER ? g.gauge.value : g.phase === PHASE.PHYSICS || over ? (g.shotPower ?? 0) : 0;
     if (this.gw === undefined) { this.gw = $('gauge').clientWidth; addEventListener('resize', () => { this.gw = $('gauge').clientWidth; memo.clear(); }); }
@@ -287,8 +306,8 @@ export class UI {
     put('gauge', 'a', Math.round(pw * 100), (e, x) => e.setAttribute('aria-valuenow', x));
     if (g.phase === PHASE.POWER) { const tk = Math.floor(pw * 10); if (tk !== this.lastTick) { this.lastTick = tk; sfx.tick(); } }
     const canAct = this.started && !cpuTurn && (g.phase === PHASE.AIM || g.phase === PHASE.POWER);
-    put('fire', 'd', !canAct, (e, x) => { e.disabled = x; });
-    text('fire', g.phase === PHASE.POWER ? '튕기기!' : '게이지 시작');
+    put('fire', 'd', !canAct && !(g.phase === PHASE.POWER && !cpuTurn), (e, x) => { e.disabled = x; });
+    text('fire', g.phase === PHASE.POWER ? '떼면 튕겨요!' : '꾹 누르기');
     const noAim = !(this.started && !cpuTurn && g.phase === PHASE.AIM);
     put('left', 'd', noAim, (e, x) => { e.disabled = x; }); put('right', 'd', noAim, (e, x) => { e.disabled = x; });
 

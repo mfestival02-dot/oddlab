@@ -21,17 +21,26 @@ async function main() {
 
   // ---------- 입력: 길게 눌러도 한 번, 차례가 바뀌면 눌린 상태를 버린다 ----------
   const input = {
-    hold: 0, left: false, right: false, spaceDown: false, launches: 0,
-    clear() { this.hold = 0; this.left = this.right = false; },
+    holding: false, spaceDown: false, launches: 0,
+    clear() { this.holding = false; },
     locked() { return !ui.started || cpuTurn(); },                 // 메뉴 중이거나 컴퓨터 차례면 조작을 받지 않는다
-    press() {
-      if (this.locked()) return null;
+    down() {                                   // 꾹 누르기 시작
+      if (this.locked()) return false;
       sfx.init();
-      const r = game.press();
-      if (r === 'fire') this.launches++;
-      if (r === 'gauge') sfx.click();
-      return r;
+      const ok = game.pressDown();
+      if (ok) { sfx.click(); this.holding = true; }
+      return ok;
     },
+    up() {                                     // 떼면 튕긴다
+      if (!this.holding) return false;
+      this.holding = false;
+      if (!ui.started) return false;
+      const ok = game.pressUp();
+      if (ok) this.launches++;
+      return ok;
+    },
+    cycle(dir) { if (!this.locked() && game.phase === PHASE.AIM) { game.cycleSpot(dir); sfx.click(); } },
+    cycleTo(i) { if (!this.locked() && game.phase === PHASE.AIM) game.selectSpot(i); },
     restart() { if (!ui.started || game.online) return; game.restart(); this.clear(); view.resetCamera(); },
   };
   const slow = { t: 0, used: false, scale: 1 };
@@ -65,23 +74,19 @@ async function main() {
     }
     if (e.code === 'Space') {
       e.preventDefault();
-      if (e.repeat || input.spaceDown) return;                          // 길게 눌러 생기는 반복 입력은 무시
+      if (e.repeat || input.spaceDown) return;                          // 길게 누르면 한 번의 '꾹'이다
       input.spaceDown = true;
-      input.press();
+      input.down();
     } else if (!e.repeat) {
-      if (e.code === 'ArrowLeft' || e.code === 'KeyA') { input.left = true; e.preventDefault(); }
-      else if (e.code === 'ArrowRight' || e.code === 'KeyD') { input.right = true; e.preventDefault(); }
-      else if ((e.code === 'ArrowUp' || e.code === 'KeyW') && !input.locked()) { game.setHit(game.hit + 1); sfx.click(); e.preventDefault(); }
-      else if ((e.code === 'ArrowDown' || e.code === 'KeyS') && !input.locked()) { game.setHit(game.hit - 1); sfx.click(); e.preventDefault(); }
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') { input.cycle(-1); e.preventDefault(); }
+      else if (e.code === 'ArrowRight' || e.code === 'KeyD') { input.cycle(1); e.preventDefault(); }
       else if (e.code === 'KeyR') ui.rematch();
     }
   });
-  addEventListener('keyup', (e) => {
-    if (e.code === 'Space') input.spaceDown = false;
-    if (e.code === 'ArrowLeft' || e.code === 'KeyA') input.left = false;
-    if (e.code === 'ArrowRight' || e.code === 'KeyD') input.right = false;
-  });
-  addEventListener('blur', () => { input.clear(); input.spaceDown = false; });
+  addEventListener('keyup', (e) => { if (e.code === 'Space') { if (!typing(e)) e.preventDefault(); input.spaceDown = false; input.up(); } });
+  // 버튼을 마우스로 누른 뒤 초점이 남아 Space가 그 버튼을 다시 누르는 일을 막는다
+  addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button'); if (b && !b.closest('#dev')) b.blur(); });
+  addEventListener('blur', () => { input.spaceDown = false; input.up(); });
 
   localGame.onEvent = onGameEvent;
   ui = new UI(game, view, input, sfx);
@@ -92,32 +97,24 @@ async function main() {
   ui.lobby = new Lobby(net, netGame, sfx, {
     start(m, seat) { ui.mode = 'online'; ui.started = true; useGame(netGame); netGame.onMatch(m, seat); document.getElementById('pick').hidden = true; document.getElementById('start').hidden = true; },
     exit() { ui.started = false; ui.mode = 'versus'; useGame(localGame); },
+    view,
     notice(t) { ui.banner('알림', t); },
   });
   if (new URLSearchParams(location.search).get('room')) ui.lobby.open();          // 초대 링크로 들어온 경우
 
   // ---------- 컴퓨터 차례: 방향을 재고 → 게이지를 보다가 → 튕긴다 ----------
-  function turnToward(target, maxStep) {
-    const d = ((target - game.aim[1] + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
-    game.aim[1] += Math.sign(d) * Math.min(Math.abs(d), maxStep);
-    return Math.abs(d) < 0.01;
-  }
   function driveCpu(dt) {
     if (!ui.started || game.online || !cpuTurn()) { cpu.state = 'idle'; return; }
     if (game.phase === PHASE.AIM) {
-      if (cpu.state === 'idle') { cpu.planner = new Planner(RAPIER, game, 0.4); cpu.state = 'think'; cpu.t = 0; }
+      if (cpu.state === 'idle') { cpu.planner = new Planner(RAPIER, game, 0.4); cpu.state = 'think'; cpu.t = 0; cpu.look = 0; }
       cpu.t += dt;
       if (cpu.state === 'think') {
         const done = cpu.planner.step(5);
-        turnToward(cpu.planner.best.angle + Math.sin(cpu.t * 5) * 0.12, dt * 0.9);       // 갸웃거리며 잰다
-        if (done && cpu.t > 1.2) { cpu.shot = cpu.planner.shot; game.setHit(cpu.shot.hit); cpu.state = 'aim'; }
-      } else if (cpu.state === 'aim') {
-        if (turnToward(cpu.shot.angle, dt * 1.5)) { cpu.state = 'gauge'; cpu.prevGauge = 0; game.press(); sfx.click(); }
-      }
-    } else if (game.phase === PHASE.POWER && cpu.state === 'gauge') {
-      const v = game.gauge.value, t = cpu.shot.power;
-      if (game.gauge.t > 0.25 && (v - t) * (cpu.prevGauge - t) <= 0) { game.fire(cpu.shot.angle, t, cpu.shot.hit); cpu.state = 'idle'; }
-      cpu.prevGauge = v;
+        if (cpu.t > cpu.look) { cpu.look = cpu.t + 0.35; game.selectSpot(done ? cpu.planner.shot.spot : game.spot + 1); }     // 이 자리 저 자리 재 본다
+        if (done && cpu.t > 1.4) { cpu.shot = cpu.planner.shot; game.selectSpot(cpu.shot.spot); cpu.state = 'press'; cpu.t = 0; }
+      } else if (cpu.state === 'press' && cpu.t > 0.35) { game.pressDown(); sfx.click(); cpu.state = 'hold'; }
+    } else if (game.phase === PHASE.POWER && cpu.state === 'hold') {
+      if (game.gauge.value >= cpu.shot.power) { game.fireSpot(cpu.shot.spot, cpu.shot.power); cpu.state = 'idle'; }
     }
   }
 
@@ -164,10 +161,6 @@ async function main() {
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.25, (now - last) / 1000); last = now;
-    if (!input.locked()) {
-      const dir = input.hold || (input.right ? 1 : 0) - (input.left ? 1 : 0);
-      if (dir) game.turn(dir, dt);
-    }
     driveCpu(dt);
 
     // 느린 화면: 상대 위로 날아드는 순간, 걸침 확정, 낙하. 계산은 그대로 두고 흐르는 속도만 늦춘다.

@@ -1,5 +1,5 @@
 // 물리 시뮬레이션. 화면과 무관하게 돌아가므로 Node에서도 같은 코드로 검증한다.
-import { DT, GEOM, TYPES, HITS } from './config.js';
+import { DT, GEOM, TYPES, HITS, spotsOf } from './config.js';
 
 const rot = (q, v) => {            // 쿼터니언으로 벡터 회전
   const { x, y, z, w } = q, [vx, vy, vz] = v;
@@ -8,6 +8,19 @@ const rot = (q, v) => {            // 쿼터니언으로 벡터 회전
 };
 const len = (v) => Math.hypot(v.x, v.y, v.z);
 export const yawQuat = (a) => ({ x: 0, y: Math.sin(a / 2), z: 0, w: Math.cos(a / 2) });
+
+// 지금 위로 온 면과, 그 면 위의 누름 자리들(월드 좌표). 뒤집히거나 옆으로 서 있어도 위로 온 면을 쓴다.
+export function spotsFor(type, c, q) {
+  const dims = TYPES[type].dims;
+  const ax = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((e) => rot(q, e));
+  let k = 0; for (let j = 1; j < 3; j++) if (Math.abs(ax[j][1]) > Math.abs(ax[k][1])) k = j;      // 위를 향한 축
+  const sign = Math.sign(ax[k][1]) || 1, [L, W] = [0, 1, 2].filter((j) => j !== k).sort((a, b) => dims[b] - dims[a]);   // 면의 긴 방향, 짧은 방향
+  return spotsOf(type).map(([s, t, kind]) => {
+    const p = [0, 1, 2].map((n) => c[n] + ax[k][n] * sign * dims[k] + ax[L][n] * s * dims[L] + ax[W][n] * t * dims[W]);
+    const dx = c[0] - p[0], dz = c[2] - p[2], len = Math.hypot(dx, dz) || 1;
+    return { p, kind, dir: [dx / len, 0, dz / len], angle: Math.atan2(dz, dx), reach: len, rim: Math.min(1.45, Math.hypot(s, t)) };   // 꼭짓점은 가장자리보다 더 바깥이라 더 잘 들린다
+  });
+}
 
 export class Sim {
   // state.bodies[i] = { p:[x,y,z], q:{x,y,z,w}, lv:[..], av:[..], fallen }
@@ -23,13 +36,12 @@ export class Sim {
       .setFriction(this.S.friction).setRestitution(this.S.restitution));
     this.floorCol = world.createCollider(RAPIER.ColliderDesc.cuboid(40, 0.5, 40).setTranslation(0, GEOM.floorY - 0.5, 0).setFriction(1).setRestitution(0.1));
     this.bodies = []; this.cols = []; this.fallen = []; this.types = []; this.dims = [];
-    const r = GEOM.round;
     state.bodies.forEach((b) => {
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(b.p[0], b.p[1], b.p[2]).setRotation(b.q)
         .setLinvel(...(b.lv || [0, 0, 0])).setAngvel({ x: (b.av || [0, 0, 0])[0], y: (b.av || [0, 0, 0])[1], z: (b.av || [0, 0, 0])[2] })
         .setLinearDamping(this.S.linDamp).setAngularDamping(this.S.angDamp * (TYPES[b.type || 'normal'].ang ?? 1)).setCcdEnabled(true).setSoftCcdPrediction(0.12).setCanSleep(true));
-      const type = b.type || 'normal', T = TYPES[type], [hx, hy, hz] = T.dims;
+      const type = b.type || 'normal', T = TYPES[type], [hx, hy, hz] = T.dims, r = Math.min(T.round ?? GEOM.round, hy * 0.9);
       const col = world.createCollider(RAPIER.ColliderDesc.roundCuboid(hx - r, hy - r, hz - r, r)
         .setMass(T.mass).setFriction(this.S.friction * T.fr).setRestitution(Math.min(0.95, this.S.restitution * T.re)), body);
       this.bodies.push(body); this.cols.push(col); this.fallen.push(!!b.fallen); this.types.push(type); this.dims.push(T.dims);
@@ -91,6 +103,29 @@ export class Sim {
     // r × J 의 '앞 들림' 성분(진단용): 양수면 기본 충격만으로 앞이 들린다
     const torqueNoseUp = (-back) * (J * vAssist) - up * J;
     return { J, point, imp, torqueNoseUp, side };
+  }
+
+  spots(i) { const c = this.bodies[i].translation(); return spotsFor(this.types[i], [c.x, c.y, c.z], this.bodies[i].rotation()); }
+  // 손가락으로 누름 자리를 꾹 눌렀다 놓는다: 지우개가 누른 자리의 반대쪽으로 튀어 나간다.
+  // 충격은 누른 자리 아래(무게중심에서 벗어난 점)에 준다. 가장자리 가운데를 누르면 한 축으로만 들리며 곧게 가고,
+  // 꼭짓점을 누르면 대각선 축으로 들려서 직육면체가 비틀리며 구른다(무작위 값 없이 강체 운동으로만).
+  press(i, spotIndex, power) {
+    const S = this.S, body = this.bodies[i], T = TYPES[this.types[i]];
+    const list = this.spots(i), sp = list[Math.max(0, Math.min(list.length - 1, spotIndex | 0))];
+    const d = sp.dir, c = body.translation();
+    const J = S.impulse * Math.pow(T.mass, 0.85) * (T.push ?? 1) * Math.pow(Math.min(1, Math.max(0, power)), S.powerCurve);
+    // 가장자리 끝을 누를수록 잘 뜨고, 안쪽을 누르면 미끄러진다
+    // 지렛대: 무게중심에서 먼 자리(긴 쪽 끝)일수록 잘 들리고, 가까운 자리(옆면 가운데)는 덜 들린다.
+    // 꼭짓점은 받치는 면이 거의 없어 훨씬 쉽게 들리고 비틀린다.
+    const lever = Math.min(1, sp.reach / Math.max(...this.dims[i])), corner = sp.kind === '꼭짓점';
+    const vAssist = S.vAssist * (T.lift ?? 1) * (0.45 + 0.55 * sp.rim) * (0.55 + 0.45 * lever) * (corner ? S.cornerPop : 1);
+    const spinAssist = (S.spinAssist + (T.spin ?? 0)) * lever + (corner ? S.cornerSpin : 0);
+    const back = sp.reach * S.hitBack, up = S.hitHeight * this.extent(i, [0, 1, 0]) * lever;
+    const point = { x: c.x - d[0] * back, y: c.y + up, z: c.z - d[2] * back };
+    const imp = { x: d[0] * J, y: J * vAssist, z: d[2] * J };
+    body.applyImpulseAtPoint(imp, point, true);
+    if (spinAssist !== 0) { const k = J * spinAssist * sp.reach; body.applyTorqueImpulse({ x: -d[2] * k, y: 0, z: d[0] * k }, true); }
+    return { J, point, imp, angle: sp.angle, kind: sp.kind, torqueNoseUp: -back * (J * vAssist) - up * J, side: 0 };
   }
 
   step() {

@@ -36,6 +36,8 @@ export class Game {
     this.info = { touching: false, upper: null, normalY: 0 };
     this.launchInfo = null;
     this.hit = 1;
+    this.spot = 0;                       // 고른 누름 자리(현재 차례인 사람의 것)
+    this.pressing = false;
     this.events.length = 0;
   }
   restart() {
@@ -45,14 +47,15 @@ export class Game {
     this.aim = [...L.aim];
     if (this.layoutMode === 'match') this.aim = L.bodies.map((b, i) => Math.atan2(L.bodies[1 - i].p[2] - b.p[2], L.bodies[1 - i].p[0] - b.p[0]));
     this._build({ bodies: L.bodies.map((b) => ({ p: b.p, q: yawQuat(b.yaw), type: b.type })) }, { ...this.pending });
+    this.spot = this.bestSpot();
     this.phase = PHASE.AIM;
     this.onEvent('restart');
   }
   get applied() { return this.sim.S; }
 
   // 발사 직전 상태 한 벌: 위치·회전·속도·수면, 차례, 방향·파워, 적용할 설정
-  snapshot(angle = this.aim[this.player], power = null, hit = this.hit) {
-    return { kind: 'eraser-duel-shot', version: 1, state: this.sim.getState(), player: this.player, aim: [...this.aim], angle, power, hit, settings: { ...this.pending } };
+  snapshot(angle = this.aim[this.player], power = null, hit = this.hit, spot = null) {
+    return { kind: 'eraser-duel-shot', version: 1, state: this.sim.getState(), player: this.player, aim: [...this.aim], angle, power, hit, spot, settings: { ...this.pending } };
   }
   restore(snap, { useSnapSettings = true } = {}) {
     if (useSnapSettings) this.pending = { ...snap.settings };
@@ -62,6 +65,7 @@ export class Game {
     this._build(snap.state, { ...this.pending });
     this.types = snap.state.bodies.map((b) => b.type || 'normal');
     this.hit = snap.hit ?? 1;
+    this.spot = snap.spot ?? this.bestSpot();
     this.phase = PHASE.AIM;
     this.onEvent('restore');
   }
@@ -71,6 +75,48 @@ export class Game {
     if (this.phase !== PHASE.AIM) return;
     this.aim[this.player] += dir * AIM_SPEED * dt;
   }
+  // ---------- 손가락으로 누르기(실제 경기 조작) ----------
+  spots() { return this.sim.spots(this.player); }
+  bestSpot() {                           // 상대 쪽으로 가장 곧게 나가는 자리(차례 시작 때 기본 선택)
+    const a = this.curr[this.player].p, b = this.curr[1 - this.player].p, want = Math.atan2(b[2] - a[2], b[0] - a[0]);
+    let best = 0, bd = 9;
+    this.sim.spots(this.player).forEach((s, i) => { const d = Math.abs(((s.angle - want + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI) + (s.kind === '꼭짓점' ? 0.15 : 0); if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+  selectSpot(i) {                        // 조준 중에만 자리를 바꾼다
+    if (this.phase !== PHASE.AIM) return;
+    const n = this.spots().length;
+    this.spot = ((i % n) + n) % n;
+    this.aim[this.player] = this.spots()[this.spot].angle;
+  }
+  cycleSpot(dir) { this.selectSpot(this.spot + dir); }
+  pressAt(t) { return Math.min(1, Math.max(0, t) / this.applied.pressTime); }      // 누른 시간 → 힘(0~1)
+  pressDown() {                          // 꾹 누르기 시작
+    if (this.phase !== PHASE.AIM) return false;
+    this.phase = PHASE.POWER; this.pressing = true;
+    this.gauge = { t: 0, value: 0 };
+    this.onEvent('gauge');
+    return true;
+  }
+  pressUp() {                            // 손을 떼면 튕긴다
+    if (this.phase !== PHASE.POWER || !this.pressing) return false;
+    if (this.gauge.t < MIN_GAUGE_TIME) { this.phase = PHASE.AIM; this.pressing = false; this.gauge = { t: 0, value: 0 }; return false; }   // 살짝 건드린 것은 누른 것으로 치지 않는다
+    return this.fireSpot(this.spot, this.pressAt(this.gauge.t));
+  }
+  fireSpot(spot, power) {
+    if (this.phase !== PHASE.AIM && this.phase !== PHASE.POWER) return false;
+    const n = this.spots().length; spot = Math.max(0, Math.min(n - 1, spot | 0));
+    this.lastShot = this.snapshot(this.spots()[spot].angle, power, 1, spot);
+    this._build(this.lastShot.state, { ...this.pending });
+    this.spot = spot;
+    this.launchInfo = this.sim.press(this.player, spot, power);
+    this.aim[this.player] = this.launchInfo.angle;
+    this.shotPower = power; this.pressing = false;
+    this.phase = PHASE.PHYSICS;
+    this.events.push({ type: 'launch', i: this.player, power, p: this.curr[this.player].p, kind: this.launchInfo.kind });
+    this.onEvent('fire');
+    return true;
+  }
   setHit(h) {                            // 누르는 위치: 0 앞 / 1 가운데 / 2 뒤 (조준 중에만)
     if (this.phase !== PHASE.AIM) return;
     this.hit = Math.max(0, Math.min(2, h));
@@ -78,7 +124,7 @@ export class Game {
   press() {                              // 스페이스·버튼: 게이지 시작 → 튕기기
     if (this.phase === PHASE.AIM) {
       this.phase = PHASE.POWER;
-      this.gauge = { t: 0, value: 0 };
+      this.gauge = { t: 0, value: 0 }; this.pressing = false;
       this.onEvent('gauge');
       return 'gauge';
     }
@@ -107,7 +153,7 @@ export class Game {
     if (!this.lastShot) return false;
     const s = this.lastShot;
     this.restore(s);
-    return this.fire(s.angle, s.power, s.hit ?? 1);
+    return s.spot != null ? this.fireSpot(s.spot, s.power) : this.fire(s.angle, s.power, s.hit ?? 1);
   }
 
   // ---------- 진행 ----------
@@ -121,7 +167,10 @@ export class Game {
   tick() {
     if (this.phase === PHASE.POWER) {
       this.gauge.t += DT;
-      this.gauge.value = this.gaugeAt(this.gauge.t);
+      if (this.pressing) {
+        this.gauge.value = this.pressAt(this.gauge.t);
+        if (this.gauge.t > this.applied.pressTime + this.applied.pressHold) this.fireSpot(this.spot, 1);     // 너무 오래 누르면 손가락이 미끄러진다
+      } else this.gauge.value = this.gaugeAt(this.gauge.t);
     }
     if (this.phase === PHASE.PHYSICS || this.phase === PHASE.RESULT) {
       this.prev = this.curr;
@@ -179,10 +228,11 @@ export class Game {
     this.gauge = { t: 0, value: 0 };
     this.timers = { phys: 0, stable: 0, perch: 0, other: 0 };
     this.perchOwner = null;
-    this.hit = 1;
+    this.hit = 1; this.pressing = false;
     // 다음 사람의 기본 방향은 상대 쪽
     const a = this.curr[this.player].p, b = this.curr[1 - this.player].p;
     this.aim[this.player] = Math.atan2(b[2] - a[2], b[0] - a[0]);
+    this.spot = this.bestSpot(); this.aim[this.player] = this.spots()[this.spot].angle;
     this.onEvent('turn');
   }
   retryTurn() {                          // 물리가 끝나지 않을 때: 이번 발사 전으로 되돌린다

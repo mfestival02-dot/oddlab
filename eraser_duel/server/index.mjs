@@ -60,12 +60,13 @@ function startMatch(r) {
   g.layoutMode = 'match'; g.types = [...r.types];
   g.restart();
   r.matchId++; r.seq = 0; r.phase = 'playing'; r.result = null; r.rematch = [false, false];
-  if (r.matchId % 2 === 0) { g.player = 1; }      // 판마다 선공을 바꾼다
+  if (r.matchId % 2 === 0) { g.player = 1; g.spot = g.bestSpot(); g.aim[1] = g.spots()[g.spot].angle; }      // 판마다 선공을 바꾼다
   r.turnAt = now(); r.lastTurnNo = g.turnNo; r.evq = []; r.loops = 0; r.overAt = 0;
-  cast(r, { t: 'match', matchId: r.matchId, types: g.types, settings: { perchHold: g.applied.perchHold, gaugePeriod: g.applied.gaugePeriod, stableHold: g.applied.stableHold }, names: r.seats.map((p) => p.name) });
+  cast(r, { t: 'match', matchId: r.matchId, types: g.types, settings: matchSettings(g), names: r.seats.map((p) => p.name) });
   castRoom(r);
   pushState(r, true);
 }
+const matchSettings = (g) => ({ perchHold: g.applied.perchHold, stableHold: g.applied.stableHold, pressTime: g.applied.pressTime, pressHold: g.applied.pressHold });
 function endMatch(r, winner, reason) {
   if (r.phase !== 'playing') return;
   r.phase = 'over'; r.result = { winner, reason }; r.overAt = now();
@@ -76,7 +77,7 @@ function stateOf(r, keepEvents = false) {
   const g = r.game;
   const b = g.curr.map((c, i) => [...c.p, c.q.x, c.q.y, c.q.z, c.q.w, ...c.lv, g.sim.fallen[i] ? 1 : 0].map((v) => Math.round(v * 1e4) / 1e4));
   const ev = keepEvents ? [] : r.evq; if (!keepEvents) r.evq = [];
-  return { t: 'state', m: r.matchId, n: ++r.seq, st: now(), turn: g.turnNo, ph: g.phase, pl: g.player, aim: g.aim, hit: g.hit, gt: g.gauge.t, sp: g.shotPower ?? 0,
+  return { t: 'state', m: r.matchId, n: ++r.seq, st: now(), turn: g.turnNo, ph: g.phase, pl: g.player, aim: g.aim, spot: g.spot, gt: g.gauge.t, sp: g.shotPower ?? 0,
     b, perch: g.timers.perch, up: g.info.upper, ev, res: r.result, left: Math.max(0, LIMITS.turnMs - (now() - r.turnAt)) };
 }
 function pushState(r) { if (r.game) cast(r, stateOf(r)); }
@@ -158,28 +159,28 @@ const handlers = {
     if (!Object.hasOwn(TYPES, m.type)) return fail(p, 'bad-type', '없는 지우개입니다.');
     const seat = r.seats.indexOf(p); r.types[seat] = m.type; r.ready[seat] = false; castRoom(r);
   },
-  aim(p, m) {
+  spot(p, m) {                                                            // 누름 자리 고르기
     const c = myTurn(p, m); if (!c) return;
-    if (c.g.phase !== PHASE.AIM) return;                                    // 게이지가 움직이면 방향은 고정
-    if (!num(m.a) || Math.abs(m.a) > 1e4 || !Number.isInteger(m.h) || m.h < 0 || m.h > 2) return fail(p, 'bad-value', '방향 값이 올바르지 않습니다.');
-    c.g.aim[c.seat] = m.a; c.g.setHit(m.h);
+    if (c.g.phase !== PHASE.AIM) return;                                    // 누르는 동안에는 자리를 바꿀 수 없다
+    if (!Number.isInteger(m.s) || m.s < 0 || m.s >= c.g.spots().length) return fail(p, 'bad-value', '없는 누름 자리입니다.');
+    c.g.selectSpot(m.s);
   },
-  gaugeStart(p, m) {
+  down(p, m) {                                                            // 꾹 누르기 시작
     const c = myTurn(p, m); if (!c) return;
     if (!Number.isInteger(m.id) || m.id <= p.lastId) return fail(p, 'duplicate', '이미 처리한 요청입니다.');
-    if (c.g.phase !== PHASE.AIM) return fail(p, 'bad-phase', '지금은 게이지를 시작할 수 없습니다.');
-    p.lastId = m.id; c.g.press(); c.r.active = now(); pushState(c.r);
+    if (c.g.phase !== PHASE.AIM) return fail(p, 'bad-phase', '지금은 누를 수 없습니다.');
+    p.lastId = m.id; c.g.pressDown(); c.r.active = now(); pushState(c.r);
   },
-  gaugeStop(p, m) {
+  up(p, m) {                                                              // 손을 떼면 튕긴다
     const c = myTurn(p, m); if (!c) return;
     if (!Number.isInteger(m.id) || m.id <= p.lastId) return fail(p, 'duplicate', '이미 처리한 요청입니다.');
-    if (c.g.phase !== PHASE.POWER) return fail(p, 'bad-phase', '게이지가 움직이고 있지 않습니다.');
-    // 파워는 서버의 게이지 시간으로 정한다. 다만 누른 순간과 도착 사이의 지연만큼은(측정한 왕복 시간의 절반 + 여유, 최대 0.25초) 되돌려 준다.
+    if (c.g.phase !== PHASE.POWER) return fail(p, 'bad-phase', '누르고 있지 않습니다.');
+    // 힘은 서버가 잰 누른 시간으로 정한다. 다만 손을 뗀 순간과 도착 사이의 지연만큼은(측정한 왕복 시간의 절반 + 여유, 최대 0.25초) 되돌려 준다.
     const gt = c.g.gauge.t, win = Math.min(LIMITS.maxComp, Math.max(0.06, (p.rtt || 0) / 2000 + 0.06));
     const t = num(m.gt) ? Math.min(gt, Math.max(gt - win, m.gt)) : gt;
-    if (t < MIN_GAUGE) return fail(p, 'too-early', '게이지를 시작하자마자는 튕길 수 없습니다.');
+    if (t < MIN_GAUGE) return fail(p, 'too-early', '누르자마자는 튕길 수 없습니다.');
     p.lastId = m.id;
-    c.g.fire(c.g.aim[c.seat], c.g.gaugeAt(t), c.g.hit);
+    c.g.fireSpot(c.g.spot, c.g.pressAt(t));
     c.r.active = now(); pushState(c.r);
   },
   rematch(p, m) {
@@ -232,7 +233,7 @@ wss.on('connection', (ws) => {
       p.ws = ws; p.dcAt = 0; p.seen = t;
       if (!old || !p.room) p.name = clean(m.name, 12) || '손님';
       send(p, { t: 'welcome', token: p.token, name: p.name, resumed: !!(old && old.room), st: t });
-      if (p.room) { const r = p.room; castRoom(r); if (r.game && r.phase !== 'lobby') { send(p, { t: 'match', matchId: r.matchId, types: r.game.types, settings: { perchHold: r.game.applied.perchHold, gaugePeriod: r.game.applied.gaugePeriod, stableHold: r.game.applied.stableHold }, names: r.seats.map((q) => (q ? q.name : '')), resumed: true }); send(p, stateOf(r, true)); } }
+      if (p.room) { const r = p.room; castRoom(r); if (r.game && r.phase !== 'lobby') { send(p, { t: 'match', matchId: r.matchId, types: r.game.types, settings: matchSettings(r.game), names: r.seats.map((q) => (q ? q.name : '')), resumed: true }); send(p, stateOf(r, true)); } }
       else send(p, { t: 'rooms', rooms: publicList() });
       return;
     }

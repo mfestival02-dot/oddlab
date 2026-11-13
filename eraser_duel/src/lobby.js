@@ -1,6 +1,7 @@
 // 온라인 방 화면: 별명, 방 만들기·들어가기, 공개 방 목록, 준비, 초대 링크, 연결 상태 표시
 import { TYPES, TYPE_KEYS } from './config.js';
 import { PLAYER } from './view.js';
+import { eraserCard } from './cards.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); kids.forEach((k) => e.append(k)); return e; };
@@ -93,9 +94,7 @@ export class Lobby {
     });
     const me = r.seats[r.you], cards = $('netCards'); cards.innerHTML = '';
     for (const k of TYPE_KEYS) {
-      const c = el('button', { className: 'card' + (me.type === k ? ' sel' : '') });
-      c.style.setProperty('--c', PLAYER[r.you].css);
-      c.append(el('i'), TYPES[k].name, el('small', { textContent: TYPES[k].desc }));
+      const c = eraserCard(this.hooks.view, k, r.you, { selected: me.type === k });
       c.addEventListener('click', () => { this.net.send({ t: 'type', type: k }); this.sfx.click(); });
       cards.append(c);
     }

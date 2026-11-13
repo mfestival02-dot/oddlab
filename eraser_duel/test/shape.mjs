@@ -49,9 +49,9 @@ check('S7. 꼭짓점끼리 스치는 충돌은 닿는 위치의 작은 차이(±
   const realRandom = Math.random; Math.random = rnd;                    // 컴퓨터의 빗나감도 고정해 다시 돌릴 수 있게 한다
   const m = new Game(RAPIER); m.layoutMode = 'match'; m.rnd = rnd; m.restart();
   const d0 = dist(m.curr[0].p, m.curr[1].p); let n = 0; const log = [];
-  while (m.phase !== PHASE.RESULT && n < 40) { const pl = new Planner(RAPIER, m, 0.15); while (!pl.step(50)); log.push(`${m.player + 1}P ${(pl.shot.power * 100).toFixed(0)}%`); m.fire(pl.shot.angle, pl.shot.power, pl.shot.hit); m.runUntilSettled(25); n++; }
+  while (m.phase !== PHASE.RESULT && n < 40) { const pl = new Planner(RAPIER, m, 0.15); while (!pl.step(50)); log.push(`${m.player + 1}P ${(pl.shot.power * 100).toFixed(0)}%`); m.fireSpot(pl.shot.spot, pl.shot.power); m.runUntilSettled(25); n++; }
   Math.random = realRandom;
-  check('S8. 일반 경기 배치(40cm)에서 여러 턴 접근한 끝에 승부가 난다', !!m.result && n >= 2, `시작 거리 ${(d0 * 10).toFixed(0)}cm, ${n}턴(${log.join(' → ')}), 결과 ${m.result ? `${m.result.winner === null ? '무승부' : (m.result.winner + 1) + 'P 승'}(${m.result.reason})` : '미결'}`);
+  check('S8. 일반 경기 배치(40cm)에서 눌러 튕기기만으로 여러 턴 접근한 끝에 승부가 난다', !!m.result && n >= 2, `시작 거리 ${(d0 * 10).toFixed(0)}cm, ${n}턴(${log.join(' → ')}), 결과 ${m.result ? `${m.result.winner === null ? '무승부' : (m.result.winner + 1) + 'P 승'}(${m.result.reason})` : '미결'}`);
 }
 console.log(`\n통과 ${pass} / 실패 ${fail}`);
 process.exit(fail ? 1 : 0);

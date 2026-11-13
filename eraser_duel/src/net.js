@@ -1,7 +1,7 @@
 // 온라인: 서버 연결과, 서버가 보내 준 경기 상태를 로컬 게임과 같은 모양으로 보여 주는 대리 객체.
 // 여기서는 물리를 계산하지 않는다. 입력만 보내고, 받은 상태 사이를 보간해서 그린다.
 import { PHASE } from './game.js';
-import { yawQuat } from './sim.js';
+import { yawQuat, spotsFor } from './sim.js';
 
 const TOKEN_KEY = 'eraser-duel-token';
 export class Net {
@@ -51,13 +51,13 @@ export class NetGame {
   constructor(net) {
     this.online = true; this.net = net; this.onEvent = () => {}; this.events = [];
     this.types = ['normal', 'normal']; this.names = ['', '']; this.mySeat = 0; this.matchId = 0;
-    this.applied = { perchHold: 0.8, gaugePeriod: 1.7, stableHold: 0.45 }; this.pending = this.applied;
+    this.applied = { perchHold: 0.8, stableHold: 0.45, pressTime: 1.3, pressHold: 0.6 }; this.pending = this.applied;
     this.layoutMode = 'match';
     this.reset();
   }
   reset() {
     this.phase = PHASE.AIM; this.player = 0; this.turnNo = 0; this.seqNo = 0;
-    this.aim = [0, Math.PI]; this.hit = 1; this.gauge = { t: 0, value: 0, t0: 0, at: 0 };
+    this.aim = [0, Math.PI]; this.hit = 1; this.spot = 0; this.pressing = false; this.gauge = { t: 0, value: 0, t0: 0, at: 0 };
     this.timers = { perch: 0, stable: 0, phys: 0, other: 0 }; this.info = { upper: null, touching: false, normalY: 0 };
     this.result = null; this.shotPower = 0; this.stuck = false; this.lastShot = null; this.launchInfo = null; this.turnLeft = 0;
     const b = (x, yaw) => ({ p: [x, 0.052, 0], q: yawQuat(yaw), lv: [0, 0, 0], av: [0, 0, 0] });
@@ -67,7 +67,8 @@ export class NetGame {
   }
   get viewSeat() { return this.mySeat; }                       // 카메라는 늘 내 자리에서 본다
   canAct() { return !this.result && this.player === this.mySeat && (this.phase === PHASE.AIM || this.phase === PHASE.POWER); }
-  gaugeAt(t) { const u = (Math.max(0, t) / this.applied.gaugePeriod) % 1; return u < 0.5 ? u * 2 : 2 - u * 2; }
+  pressAt(t) { return Math.min(1, Math.max(0, t) / this.applied.pressTime); }
+  spots() { const b = this.curr[this.player]; return spotsFor(this.types[this.player], b.p, b.q); }
 
   onMatch(m, seat) {
     this.reset();
@@ -84,36 +85,45 @@ export class NetGame {
     const wasTurn = this.turnNo, mineAiming = this.canAct() && this.phase === PHASE.AIM && s.ph === PHASE.AIM && s.pl === this.mySeat;
     this.player = s.pl; this.turnNo = s.turn;
     if (!s.res) this.phase = s.ph;
-    for (let i = 0; i < 2; i++) if (!(mineAiming && i === this.mySeat)) this.aim[i] = s.aim[i];   // 내가 조준 중이면 내 손이 우선
-    if (!mineAiming) this.hit = s.hit;
+    if (!(mineAiming && this.spotDirty)) { this.spot = s.spot; this.aim = [...s.aim]; }      // 내가 방금 고른 자리가 서버에 닿기 전이면 내 손이 우선
+    this.pressing = s.ph === PHASE.POWER;
     this.gauge.t0 = s.gt; this.gauge.at = performance.now();
     this.shotPower = s.sp; this.timers.perch = s.perch; this.info.upper = s.up; this.info.touching = s.up !== null; this.turnLeft = s.left;
-    if (s.ph !== PHASE.AIM && s.ph !== PHASE.POWER) this.busy = false; else if (s.ph === PHASE.POWER && this.busy === 'start') this.busy = false;
+    if (s.ph !== PHASE.AIM && s.ph !== PHASE.POWER) this.busy = false; else if (s.ph === PHASE.POWER && this.busy === 'down') this.busy = false;
     for (const e of s.ev || []) { this.events.push(e); if (e.type === 'launch') this.lastShot = { player: e.i }; }
     if (wasTurn && s.turn !== wasTurn && !s.res) { this.busy = false; this.onEvent('turn'); }
     if (s.res && !this.result) { this.result = s.res; this.phase = PHASE.RESULT; this.onEvent('result'); }
   }
   // ---- 로컬 게임과 같은 조작 창구 ----
-  turn(dir, dt) { if (this.canAct() && this.phase === PHASE.AIM && !this.busy) { this.aim[this.mySeat] += dir * AIM_SPEED * dt; this.aimDirty = true; } }
-  setHit(h) { if (this.canAct() && this.phase === PHASE.AIM && !this.busy) { this.hit = Math.max(0, Math.min(2, h)); this.aimDirty = true; } }
-  sendAim() { this.net.send({ t: 'aim', turn: this.turnNo, a: this.aim[this.mySeat], h: this.hit }); this.aimDirty = false; this.aimSentAt = performance.now(); }
-  press() {
-    if (!this.canAct() || this.busy) return null;
-    const id = Date.now();
-    if (this.phase === PHASE.AIM) { this.sendAim(); this.net.send({ t: 'gaugeStart', turn: this.turnNo, id }); this.busy = 'start'; return 'gauge'; }
-    if (this.gauge.t < MIN_GAUGE) return null;
-    this.net.send({ t: 'gaugeStop', turn: this.turnNo, id, gt: this.gauge.t }); this.busy = 'stop';     // 내 화면에서 본 게이지 시각을 함께 보낸다
-    return 'fire';
+  selectSpot(i) {
+    if (!(this.canAct() && this.phase === PHASE.AIM && !this.busy)) return;
+    const list = this.spots(), n = list.length; this.spot = ((i % n) + n) % n; this.aim[this.mySeat] = list[this.spot].angle;
+    this.spotDirty = true; this.net.send({ t: 'spot', turn: this.turnNo, s: this.spot });
+    setTimeout(() => { this.spotDirty = false; }, 400);
   }
+  cycleSpot(dir) { this.selectSpot(this.spot + dir); }
+  pressDown() {
+    if (!this.canAct() || this.busy || this.phase !== PHASE.AIM) return false;
+    this.net.send({ t: 'spot', turn: this.turnNo, s: this.spot });
+    this.net.send({ t: 'down', turn: this.turnNo, id: Date.now() }); this.busy = 'down';
+    return true;
+  }
+  pressUp() {
+    if (!this.canAct() || this.phase !== PHASE.POWER || this.busy === 'up') return false;
+    if (this.gauge.t < MIN_GAUGE) { this.wantUp = true; return false; }                 // 너무 빨리 뗐으면 최소 시간이 되자마자 뗀 것으로 보낸다
+    this.net.send({ t: 'up', turn: this.turnNo, id: Date.now(), gt: this.gauge.t }); this.busy = 'up'; this.wantUp = false;    // 내 화면에서 잰 누른 시간을 함께 보낸다
+    return true;
+  }
+  turn() {} setHit() {} press() { return null; }
   advance() {
     const now = performance.now(), n = this.buf.length;
     let alpha = 1;
     if (n >= 2) { const a = this.buf[n - 2], b = this.buf[n - 1]; this.prev = a.bodies; this.curr = b.bodies; alpha = Math.min(1, Math.max(0, (now - b.at) / Math.max(16, b.at - a.at))); }
     else if (n === 1) this.prev = this.curr = this.buf[0].bodies;
-    if (this.phase === PHASE.POWER) { this.gauge.t = this.gauge.t0 + (now - this.gauge.at) / 1000; this.gauge.value = this.gaugeAt(this.gauge.t); }
-    if (this.aimDirty && now - this.aimSentAt > 70) this.sendAim();
+    if (this.phase === PHASE.POWER) { this.gauge.t = this.gauge.t0 + (now - this.gauge.at) / 1000; this.gauge.value = this.pressAt(this.gauge.t); if (this.wantUp) this.pressUp(); }
+    else this.wantUp = false;
     return alpha;
   }
   // 온라인에서는 쓸 수 없는 것들(서버에도 받는 곳이 없다)
-  fire() { return false; } restart() {} restore() {} retryTurn() {} replayLast() { return false; } snapshot() { return null; }
+  fire() { return false; } fireSpot() { return false; } restart() {} restore() {} retryTurn() {} replayLast() { return false; } snapshot() { return null; }
 }

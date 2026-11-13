@@ -170,7 +170,8 @@ check('3b. 파워에 따라 결과가 연속적으로 달라진다(고정 동작
   for (const p of [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]) {
     const g = new Game(RAPIER); g.fire(Math.PI / 2, 0.15); g.runUntilSettled();   // 1P는 옆으로 살짝만
     if (g.phase !== PHASE.AIM || g.player !== 1) continue;
-    g.fire(g.aim[1], p); g.runUntilSettled();
+    const me = g.curr[1].p, op = g.curr[0].p;
+    g.fire(Math.atan2(op[2] - me[2], op[0] - me[0]), p); g.runUntilSettled();
     if (g.result?.reason === 'perch' && g.result.winner === 1) { won = p; break; }
   }
   check('17. 2P도 일반 발사로 1P 위에 올라타 승리할 수 있다', won !== null, won !== null ? `파워 ${won * 100}%` : '');
@@ -186,14 +187,17 @@ check('3b. 파워에 따라 결과가 연속적으로 달라진다(고정 동작
   const g = new Game(RAPIER); let ok = true; const notes = [];
   for (const a of TYPE_KEYS) for (const b of TYPE_KEYS) {
     g.types = [a, b]; let n = 0;
-    for (const ang of [-4, 0, 4]) for (let p = 0.3; p <= 1.001; p += 0.05) { g.restart(); g.fire(rad(ang), p); g.runUntilSettled(20); if (g.result?.reason === 'perch' && g.result.winner === 0) n++; }
+    for (const ang of [-3, 0, 3]) for (let p = 0.35; p <= 1.001; p += 0.05) { g.restart(); g.fire(rad(ang), p); g.runUntilSettled(15); if (g.result?.reason === 'perch' && g.result.winner === 0) n++; }
     if (n < 1) ok = false;
     notes.push(`${TYPES[a].name}→${TYPES[b].name} ${n}`);
   }
-  check('19. 지우개 종류 16가지 조합 모두 올라탈 수 있다(45발 중 성공 수)', ok, notes.join(', '));
+  const weak = notes.filter((x) => +x.split(' ')[1] < 2);
+  check(`19. 지우개 ${TYPE_KEYS.length}종의 모든 조합(${TYPE_KEYS.length ** 2}가지)에서 올라탈 수 있다`, ok, `42발 중 성공이 가장 적은 조합: ${notes.sort((a, b) => +a.split(' ')[1] - +b.split(' ')[1]).slice(0, 5).join(', ')}`);
   g.types = ['jumbo', 'mini']; g.restart();
   const m0 = g.sim.bodies[0].mass(), m1 = g.sim.bodies[1].mass();
   check('19b. 종류에 따라 크기와 무게가 실제로 다르다', Math.abs(m0 - 2.1) < 1e-3 && Math.abs(m1 - 0.5) < 1e-3 && g.sim.dims[0][0] === 0.33 && g.curr[1].type === 'mini', `점보 ${m0.toFixed(2)} / 꼬마 ${m1.toFixed(2)}`);
+  g.types = ['sharp', 'worn']; g.restart();
+  check('19c. 각진 지우개와 닳은 지우개는 충돌체 모서리 반경이 다르다', g.sim.cols[0].roundRadius() < 0.006 && g.sim.cols[1].roundRadius() > 0.025, `새것 ${g.sim.cols[0].roundRadius().toFixed(3)} / 닳은 ${g.sim.cols[1].roundRadius().toFixed(3)}`);
 }
 // 누르는 위치
 {
@@ -209,6 +213,36 @@ check('3b. 파워에 따라 결과가 연속적으로 달라진다(고정 동작
   let t = 0; while (g.phase === PHASE.PHYSICS && t < 20) { g.tick(); t += DT; for (const e of g.events) seen.add(e.type); g.events.length = 0; }
   const g2 = new Game(RAPIER); g2.fire(0, 1); let fell = false; t = 0; while (g2.phase === PHASE.PHYSICS && t < 20) { g2.tick(); t += DT; if (g2.events.some((e) => e.type === 'fall')) fell = true; g2.events.length = 0; }
   check('21. 발사·충돌·걸침 시작·낙하가 연출용 사건으로 기록된다', seen.has('impact') && seen.has('perch-start') && fell, [...seen].join(', ') + (fell ? ', fall' : ''));
+}
+// 손가락으로 눌러 튕기기
+{
+  const g = new Game(RAPIER); g.types = ['normal', 'normal']; g.restart();
+  const n = g.spots().length, s0 = g.spot;
+  g.cycleSpot(1); const s1 = g.spot; g.selectSpot(-1); const wrap = g.spot === n - 1; g.selectSpot(s0);
+  g.pressDown(); for (let i = 0; i < 10; i++) g.tick(); const tap = g.pressUp();
+  check('22. 누름 자리를 돌려 가며 고를 수 있고, 살짝 건드린 것은 취소된다', n === 8 && s1 === (s0 + 1) % n && wrap && tap === false && g.phase === PHASE.AIM, `자리 ${n}개`);
+  g.pressDown(); for (let i = 0; i < 100; i++) g.tick(); g.cycleSpot(1); const locked = g.spot === s0, half = g.gauge.value;
+  const fired = g.pressUp(), again = g.pressUp();
+  check('22b. 누르는 동안 힘이 차고 자리는 고정되며, 떼면 그 힘으로 한 번만 튕긴다', locked && Math.abs(half - 100 * DT / g.applied.pressTime) < 0.01 && fired === true && again === false && Math.abs(g.shotPower - half) < 1e-9 && g.lastShot.spot === s0, `힘 ${(half * 100).toFixed(0)}%`);
+  const g2 = new Game(RAPIER); g2.pressDown(); let t = 0; while (g2.phase === PHASE.POWER && t < 5) { g2.tick(); t += DT; }
+  check('22c. 끝까지 누르고 있으면 저절로 튕긴다(최대 힘)', g2.phase === PHASE.PHYSICS && g2.shotPower === 1 && Math.abs(t - (g2.applied.pressTime + g2.applied.pressHold)) < 0.03, `${t.toFixed(2)}초`);
+  // 누른 자리의 반대쪽으로 나간다
+  const g3 = new Game(RAPIER); g3.restore({ state: { bodies: [flat(0, 0, 0.4), flat(2.4, 1.6, 0)] }, player: 0, aim: [0, 0], angle: 0, power: null, settings: defaultSettings() });
+  let okDir = true; const kinds = new Set();
+  for (let i = 0; i < 8; i++) { g3.restore(g3.lastShot ?? g3.snapshot()); const sp = g3.spots()[i]; kinds.add(sp.kind); const snap = g3.snapshot(); g3.fireSpot(i, 0.4); for (let k = 0; k < 12; k++) g3.tick(); const v = g3.curr[0].lv; if (v[0] * sp.dir[0] + v[2] * sp.dir[2] < 0.3) okDir = false; g3.restore(snap); g3.lastShot = snap; }
+  check('22d. 지우개는 누른 자리의 반대쪽으로 튀어 나간다(끝·옆·꼭짓점 모두)', okDir && kinds.has('끝') && kinds.has('옆') && kinds.has('꼭짓점'));
+  // 자세가 바뀌면 위로 온 면의 자리를 쓴다
+  const g4 = new Game(RAPIER); g4.restore({ state: { bodies: [{ p: [0, HZ + 0.002, 0], q: { x: Math.SQRT1_2, y: 0, z: 0, w: Math.SQRT1_2 }, type: 'normal' }, flat(2.4, 1.6, 0)] }, player: 0, aim: [0, 0], angle: 0, power: null, settings: defaultSettings() });
+  const up = g4.spots(); const topY = HZ * 2;
+  g4.fireSpot(0, 0.5); const x0 = 0; g4.runUntilSettled();
+  check('22e. 옆으로 선 지우개도 위로 온 면의 자리를 눌러 튕길 수 있다', up.every((s) => Math.abs(s.p[1] - topY) < 0.01) && g4.curr[0].p.every(Number.isFinite) && Math.hypot(g4.curr[0].p[0] - x0, g4.curr[0].p[2]) > 0.05, `자리 높이 ${(up[0].p[1] * 10).toFixed(1)}cm`);
+  // 끝과 꼭짓점의 차이
+  const meas = (i, p) => { const g5 = new Game(RAPIER); g5.restore({ state: { bodies: [flat(0, 0, 0), flat(2.4, 1.6, 0)] }, player: 0, aim: [0, 0], angle: 0, power: null, settings: defaultSettings() }); g5.fireSpot(i, p); let m = 0, tt = 0, sp = 0; while (g5.phase === PHASE.PHYSICS && tt < 20) { g5.tick(); tt += DT; m = Math.max(m, g5.curr[0].p[1]); sp += Math.hypot(...g5.curr[0].av) * DT; } return { p: g5.curr[0].p, maxY: m, spin: sp * 57.3 }; };
+  const spread = (i) => { const a = meas(i, 0.72), b = meas(i, 0.75), c = meas(i, 0.78); return { d: Math.max(Math.hypot(a.p[0] - b.p[0], a.p[2] - b.p[2]), Math.hypot(c.p[0] - b.p[0], c.p[2] - b.p[2])), ...b }; };
+  const end = spread(0), corner = spread(1);
+  check('22f. 꼭짓점을 누르면 끝을 누를 때보다 훨씬 높이 뜨고 많이 돌며, 힘의 작은 차이에 훨씬 민감하다', corner.maxY > end.maxY * 2 && corner.spin > end.spin * 2 && corner.d > end.d * 3, `끝: 높이 ${(end.maxY * 10).toFixed(1)}cm, 회전 ${end.spin.toFixed(0)}도, 힘 ±3%에 ${(end.d * 10).toFixed(1)}cm / 꼭짓점: ${(corner.maxY * 10).toFixed(1)}cm, ${corner.spin.toFixed(0)}도, ${(corner.d * 10).toFixed(1)}cm`);
+  const r1 = meas(1, 0.75), r2 = meas(1, 0.75);
+  check('22g. 꼭짓점 발사도 같은 조건이면 결과가 똑같다(무작위가 아니다)', r1.p.every((v, k) => v === r2.p[k]));
 }
 console.log(`\n통과 ${pass} / 실패 ${fail}`);
 process.exit(fail ? 1 : 0);

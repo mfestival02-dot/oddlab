@@ -3,14 +3,37 @@ export const DT = 1 / 240;                       // 고정 시간 간격(초)
 export const SETTINGS_VERSION = 1;
 
 // 지우개 종류. dims는 반치수(길이/두께/폭), fr·re·ang은 마찰·반발·각 감쇠에 곱하는 배율,
-// lift·push는 뜨는 힘·나가는 힘 배율, spin은 회전에 더하는 값. 값은 test/typesearch.mjs로 찾았다.
+// lift·push는 뜨는 힘·나가는 힘 배율, spin은 회전에 더하는 값, round는 충돌체 모서리 반경(작을수록 각지다).
+// spots는 손가락으로 누를 수 있는 자리 묶음(아래 SPOT_SETS).
 export const TYPES = {
-  mini:   { name: '꼬마', dims: [0.18, 0.045, 0.105], mass: 0.5, fr: 1.06, re: 0.66, ang: 2.48, lift: 0.83, spin: -0.15, push: 1.05, desc: '작고 가벼워요' },
-  normal: { name: '보통', dims: [0.25, 0.05, 0.125], mass: 1.0, fr: 1.0, re: 1.0, desc: '무난해요' },
-  jumbo:  { name: '점보', dims: [0.33, 0.065, 0.165], mass: 2.1, fr: 1.2, re: 0.6, desc: '무겁고 넓어요' },
-  bouncy: { name: '탱탱', dims: [0.23, 0.06, 0.12], mass: 0.8, fr: 1.52, re: 1.69, ang: 2.61, lift: 1.26, spin: -0.2, push: 0.89, desc: '통통 튀어요' },
+  normal: { name: '보통', dims: [0.25, 0.05, 0.125], mass: 1.0, fr: 1.0, re: 1.0, spots: 'all8', desc: '무난한 기본 지우개' },
+  sharp:  { name: '새것', dims: [0.25, 0.055, 0.125], mass: 1.05, fr: 0.95, re: 1.5, round: 0.004, spots: 'all8', desc: '각이 살아 꼭짓점에서 크게 튀어요' },
+  worn:   { name: '닳은', dims: [0.21, 0.042, 0.11], mass: 0.7, fr: 0.8, re: 0.7, round: 0.03, spots: 'edges4', desc: '모서리가 닳아 잘 미끄러져요' },
+  half:   { name: '반토막', dims: [0.14, 0.05, 0.125], mass: 0.55, fr: 1.0, re: 1.0, ang: 1.6, spots: 'half6', desc: '짧고 가벼워요' },
+  flat:   { name: '납작', dims: [0.27, 0.03, 0.14], mass: 0.7, fr: 1.1, re: 0.8, ang: 1.4, spots: 'ends6', desc: '얇아서 올라타이기 쉬워요' },
+  square: { name: '정사각', dims: [0.16, 0.06, 0.16], mass: 0.95, fr: 1.0, re: 1.0, spots: 'all8', desc: '어느 쪽으로 밀어도 비슷해요' },
+  long:   { name: '길쭉이', dims: [0.36, 0.045, 0.09], mass: 0.9, fr: 1.0, re: 0.9, ang: 1.3, spots: 'long6', desc: '길어서 한번 돌면 크게 돌아요' },
+  art:    { name: '미술', dims: [0.33, 0.09, 0.2], mass: 2.4, fr: 1.3, re: 0.5, spots: 'art6', desc: '크고 무겁고 말랑해요' },
+  mini:   { name: '꼬마', dims: [0.18, 0.045, 0.105], mass: 0.5, fr: 1.06, re: 0.66, ang: 2.48, lift: 0.83, spin: -0.15, push: 1.05, spots: 'edges4', desc: '작고 가벼워요' },
+  jumbo:  { name: '점보', dims: [0.33, 0.065, 0.165], mass: 2.1, fr: 1.2, re: 0.6, spots: 'all8', desc: '무겁고 넓어요' },
+  bouncy: { name: '탱탱', dims: [0.23, 0.06, 0.12], mass: 0.8, fr: 1.52, re: 1.69, ang: 2.61, lift: 1.26, spin: -0.2, push: 0.89, spots: 'diag6', desc: '통통 튀어요' },
 };
 export const TYPE_KEYS = Object.keys(TYPES);
+// 누름 자리: 지금 위로 온 면의 긴 방향 s, 짧은 방향 t (-1~1). 지우개는 누른 자리의 반대쪽으로 튀어 나간다.
+// 가장자리 가운데(면)는 곧게, 꼭짓점은 대각선 축으로 구르며 튀어 읽기 어렵다.
+const E = { end1: [-1, 0, '끝'], end2: [1, 0, '끝'], side1: [0, -1, '옆'], side2: [0, 1, '옆'] };
+const C = { c1: [-1, -1, '꼭짓점'], c2: [-1, 1, '꼭짓점'], c3: [1, 1, '꼭짓점'], c4: [1, -1, '꼭짓점'] };
+export const SPOT_SETS = {
+  all8:   [E.end1, C.c2, E.side2, C.c3, E.end2, C.c4, E.side1, C.c1],
+  edges4: [E.end1, E.side2, E.end2, E.side1],
+  ends2:  [E.end1, E.end2],
+  ends6:  [E.end1, C.c2, C.c3, E.end2, C.c4, C.c1],
+  half6:  [E.end1, C.c2, E.side2, E.end2, E.side1, C.c1],
+  long6:  [E.end1, [-0.5, 1, '옆'], [0.5, 1, '옆'], E.end2, [0.5, -1, '옆'], [-0.5, -1, '옆']],
+  art6:   [E.end1, E.side2, E.end2, E.side1, [-0.5, 0, '안쪽'], [0.5, 0, '안쪽']],
+  diag6:  [E.end1, C.c2, E.side2, E.end2, C.c4, E.side1],
+};
+export const spotsOf = (type) => SPOT_SETS[TYPES[type].spots];
 // 누르는 위치: v는 위로 뜨는 힘, h는 앞으로 가는 힘, spin은 회전에 더하는 값
 export const HITS = [
   { key: 'front', name: '앞', v: 0.35, h: 1.12, spin: -0.22, desc: '낮게 미끄러져 밀어내기' },
@@ -43,7 +66,11 @@ export const SETTING_DEFS = [
   ['stableAng',   '안정 각속도 기준',  0.35, 0.01, 5,  0.01, '이 값보다 느리게 돌면 거의 멈춘 것으로 본다.'],
   ['stableHold',  '안정 유지 시간',    0.45, 0.05, 3,  0.05, '멈춘 상태가 이만큼 이어지면 턴을 끝낸다(초).'],
   ['perchHold',   '걸침 유지 시간',    0.8,  0.1, 4,   0.05, '걸친 상태가 이만큼 이어지면 승리로 확정한다(초).'],
-  ['gaugePeriod', '게이지 왕복 시간',  1.7,  0.5, 5,   0.1,  '파워 게이지가 한 번 왕복하는 시간(초).'],
+  ['gaugePeriod', '게이지 왕복 시간',  1.7,  0.5, 5,   0.1,  '(개발용 방향 발사) 파워 게이지가 한 번 왕복하는 시간(초).'],
+  ['cornerPop',   '꼭짓점 들림 배율',  1.45, 0.5, 3,   0.05, '꼭짓점을 눌렀을 때 위로 뜨는 힘의 배율. 받치는 면이 작아 더 쉽게 들린다.'],
+  ['cornerSpin',  '꼭짓점 비틀림',     0.3,  0,   1.5, 0.05, '꼭짓점을 눌렀을 때 더해지는 회전(대각선 축으로 구르게 한다).'],
+  ['pressTime',   '꾹 누르는 시간',    1.3,  0.4, 4,   0.05, '손가락으로 누르는 힘이 0에서 최대까지 차는 시간(초).'],
+  ['pressHold',   '최대에서 버티는 시간', 0.6, 0.1, 3,  0.05, '힘이 다 찬 뒤 이만큼 더 누르고 있으면 손가락이 미끄러져 저절로 튕긴다(초).'],
 ];
 export const APPLY_NOTE = '다음 발사부터 적용';
 

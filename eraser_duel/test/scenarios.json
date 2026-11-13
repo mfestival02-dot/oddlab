@@ -18,7 +18,11 @@
     "stableAng": 0.35,
     "stableHold": 0.45,
     "perchHold": 0.8,
-    "gaugePeriod": 1.7
+    "gaugePeriod": 1.7,
+    "cornerPop": 1.45,
+    "cornerSpin": 0.3,
+    "pressTime": 1.3,
+    "pressHold": 0.6
   },
   "scenarios": {
     "긴 축 방향(면으로 밀기)": {

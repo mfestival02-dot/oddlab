@@ -71,37 +71,38 @@ check('O9. 일반 경기는 멀리 떨어져 시작한다', dist0 > 3.5, `두 �
 // --- 입력 검증 ---
 const first = sa.pl === 0 ? A : B, second = sa.pl === 0 ? B : A;
 second.errors.length = 0;
-second.send({ t: 'gaugeStart', turn: 1, id: ++second.id }); second.send({ t: 'aim', turn: 1, a: 1, h: 1 });
+second.send({ t: 'down', turn: 1, id: ++second.id }); second.send({ t: 'spot', turn: 1, s: 1 });
 await second.wait(() => second.errors.length >= 2);
-check('O10. 상대 차례에는 조준도 발사도 거절한다', second.errors.every((e) => e === 'not-your-turn') && A.state().ph === 'aim');
+check('O10. 상대 차례에는 자리 고르기도 누르기도 거절한다', second.errors.every((e) => e === 'not-your-turn') && A.state().ph === 'aim');
 first.errors.length = 0;
-first.send({ t: 'aim', turn: 1, a: 'NaN', h: 1 }); first.send({ t: 'aim', turn: 1, a: 0.1, h: 9 }); first.send({ t: 'aim', turn: 1, a: 1e9, h: 1 }); first.send({ t: 'gaugeStart', turn: 7, id: ++first.id });
+first.send({ t: 'spot', turn: 1, s: 'NaN' }); first.send({ t: 'spot', turn: 1, s: 99 }); first.send({ t: 'spot', turn: 1, s: -1 }); first.send({ t: 'down', turn: 7, id: ++first.id });
 await first.wait(() => first.errors.length >= 4);
 check('O11. 숫자가 아니거나 범위를 벗어난 값, 지난 턴 번호는 거절한다', first.errors.filter((e) => e === 'bad-value').length === 3 && first.errors.includes('stale-turn'), first.errors.join(', '));
 // 개발자용 조작은 서버에 아예 없다
 const before = JSON.stringify(A.state().b);
-for (const t of ['fire', 'restore', 'settings', 'setState', 'win', 'restart']) first.send({ t, turn: 1, angle: 0, power: 1, winner: 0, settings: { gravity: 1 }, b: [[0, 0, 0]] });
+for (const t of ['fire', 'fireSpot', 'restore', 'settings', 'setState', 'win', 'restart', 'gaugeStop', 'aim']) first.send({ t, turn: 1, id: Date.now(), angle: 0, a: 1, power: 1, gt: 1, winner: 0, settings: { gravity: 1 }, b: [[0, 0, 0]] });
 await sleep(250);
 check('O12. 설정 변경·상태 복원·임의 발사·승패 변경 같은 요청은 서버가 받지 않는다', JSON.stringify(A.state().b) === before && A.state().ph === 'aim' && !A.last.room.result);
-// 게이지
-const aimA = first === A ? 0 : Math.PI;
-first.send({ t: 'aim', turn: 1, a: aimA, h: 1 });
+// 누르기
+first.send({ t: 'spot', turn: 1, s: 0 });
 first.errors.length = 0;
 const gid = ++first.id;
-first.send({ t: 'gaugeStart', turn: 1, id: gid }); first.send({ t: 'gaugeStart', turn: 1, id: gid });
+first.send({ t: 'down', turn: 1, id: gid }); first.send({ t: 'down', turn: 1, id: gid });
 await first.wait(() => first.state().ph === 'power');
-first.send({ t: 'gaugeStop', turn: 1, id: ++first.id, gt: 0.5 });       // 시작하자마자
+first.send({ t: 'spot', turn: 1, s: 1 }); await sleep(120);
+const lockedSpot = first.state().spot === 0;
+first.send({ t: 'up', turn: 1, id: ++first.id, gt: 0.5 });       // 누르자마자 뗌
 await first.wait(() => first.errors.length >= 2);
-check('O13. 같은 요청을 두 번 보내도 한 번만 처리하고, 게이지를 시작하자마자는 튕길 수 없다', first.errors.includes('duplicate') && first.errors.includes('too-early') && first.state().ph === 'power', first.errors.join(', '));
-// 지연 보정: 화면에서 본 게이지 시간을 보내면 한도 안에서만 되돌려 준다
+check('O13. 같은 요청을 두 번 보내도 한 번만 처리하고, 누르는 동안 자리는 못 바꾸며, 누르자마자는 튕길 수 없다', first.errors.includes('duplicate') && first.errors.includes('too-early') && lockedSpot && first.state().ph === 'power', first.errors.join(', '));
+// 지연 보정: 화면에서 잰 누른 시간을 보내면 한도 안에서만 되돌려 준다
 await first.wait(() => first.state().gt > 0.9);
 const gtServer = first.state().gt;
-first.send({ t: 'gaugeStop', turn: 1, id: ++first.id, gt: 0.1 });       // 1초 가까이 전에 눌렀다고 우긴다
+first.send({ t: 'up', turn: 1, id: ++first.id, gt: 0.1 });       // 0.1초만 눌렀다고 우긴다
 await first.wait(() => first.state().ph === 'physics');
-const sp = first.state().sp, period = first.last.match.settings.gaugePeriod;
-const at = (t) => { const u = (t / period) % 1; return u < 0.5 ? u * 2 : 2 - u * 2; };
-const claimed = at(0.1), lo = Math.min(at(gtServer - 0.3), at(gtServer + 0.2)), hi = Math.max(at(gtServer - 0.3), at(gtServer + 0.2), 1);
-check('O14. 파워는 서버의 게이지로 정하고, 지연 보정은 0.25초 한도 안에서만 한다', Math.abs(sp - claimed) > 0.2 && sp >= lo - 0.05 && sp <= hi + 0.05, `우긴 값 ${(claimed * 100).toFixed(0)}% → 실제 적용 ${(sp * 100).toFixed(0)}% (서버 게이지 ${gtServer.toFixed(2)}초 시점)`);
+const sp = first.state().sp, pressTime = first.last.match.settings.pressTime;
+const at = (t) => Math.min(1, Math.max(0, t) / pressTime);
+const claimed = at(0.1), lo = at(gtServer - 0.3), hi = at(gtServer + 0.2);
+check('O14. 힘은 서버가 잰 누른 시간으로 정하고, 지연 보정은 0.25초 한도 안에서만 한다', Math.abs(sp - claimed) > 0.2 && sp >= lo - 0.02 && sp <= hi + 0.02, `우긴 값 ${(claimed * 100).toFixed(0)}% → 실제 적용 ${(sp * 100).toFixed(0)}% (서버가 잰 시간 ${gtServer.toFixed(2)}초)`);
 
 // --- 물리 진행 중 끊김과 재접속 ---
 const tokenB = B.token;
@@ -119,20 +120,19 @@ const same = (x, y) => x.b.every((b, i) => b.every((v, k) => Math.abs(v - y.b[i]
 check('O18. 발사가 끝난 뒤 양쪽이 받은 위치·차례가 같다(끊겨 있던 동안에도 서버는 계속 계산)', sa.n === sb.n && same(sa, sb) && sa.pl === sb.pl && sa.turn === sb.turn, `${sa.ph}, 턴 ${sa.turn}, ${sa.pl + 1}P 차례`);
 
 // --- 경기 끝까지: 한쪽이 최대 세기로 날려 떨어뜨린다 ---
-async function shoot(c, seat, turn, stopAt) {
-  c.send({ t: 'aim', turn, a: seat === 0 ? 0.6 : Math.PI + 0.6, h: 1 });
-  c.send({ t: 'gaugeStart', turn, id: ++c.id });
-  await c.wait(() => c.state().ph === 'power' && c.state().gt >= stopAt);
-  c.send({ t: 'gaugeStop', turn, id: ++c.id, gt: c.state().gt });
-  await c.wait(() => c.state().ph === 'physics' || c.state().res);
-  await c.wait(() => c.state().ph !== 'physics', 20000);
+async function shoot(c, turn) {          // 끝까지 꾹 눌러 저절로 튕기게 한다(최대 힘)
+  c.send({ t: 'down', turn, id: ++c.id });
+  await c.wait(() => c.state().ph === 'power' || c.state().res);
+  await c.wait(() => c.state().ph !== 'power' || c.state().res, 6000);
+  await c.wait(() => c.state().ph !== 'physics' || c.state().res, 20000);
 }
 const AA = A, BB = B2;
 let guard = 0;
-while (!AA.state().res && guard++ < 6) { const s = AA.state(); await shoot(s.pl === 0 ? AA : BB, s.pl, s.turn, period * 0.5 - 0.01); await sleep(200); }
+let autoFired = false;
+while (!AA.state().res && guard++ < 14) { const s = AA.state(); await shoot(s.pl === 0 ? AA : BB, s.turn); if (AA.state().sp === 1) autoFired = true; await sleep(200); }
 await AA.wait(() => AA.last.room.phase === 'over'); await sleep(200);
 const res = AA.state().res;
-check('O19. 서버가 승패를 정해 양쪽에 같은 결과를 알린다', !!res && JSON.stringify(res) === JSON.stringify(BB.state().res) && AA.last.room.phase === 'over', JSON.stringify(res));
+check('O19. 끝까지 누르면 저절로 튕기고(최대 힘), 서버가 승패를 정해 양쪽에 같은 결과를 알린다', autoFired && !!res && JSON.stringify(res) === JSON.stringify(BB.state().res) && AA.last.room.phase === 'over', JSON.stringify(res));
 
 // --- 재대결 ---
 const oldMatch = AA.state().m;

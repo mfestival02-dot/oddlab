@@ -1,7 +1,7 @@
 // 필통(모은 지우개)과 전적. 이 브라우저에만 저장된다.
 import { TYPE_KEYS } from './config.js';
 const KEY = 'eraser-duel-save-v1';
-const fresh = () => ({ version: 1, erasers: { mini: 0, normal: 1, jumbo: 0, bouncy: 0 }, wins: 0, losses: 0 });
+const fresh = () => ({ version: 1, erasers: Object.fromEntries(TYPE_KEYS.map((k) => [k, k === 'normal' ? 1 : 0])), wins: 0, losses: 0 });
 export function loadMeta() {
   try {
     const o = JSON.parse(localStorage.getItem(KEY));

@@ -1,169 +1,104 @@
-// 실제 브라우저에서 일반 조작으로 확인하고 녹화한다.  실행: node test/browser.cjs  (먼저 npm run build)
+// 실제 브라우저에서 일반 조작으로 확인한다(스크린샷만, 영상 없음).  실행: node test/browser.cjs  (먼저 npm run build)
 const { chromium } = require('playwright');
 const path = require('path'), fs = require('fs');
 const out = path.join(__dirname, '..', 'shots');
 (async () => {
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-  const ctx = await b.newContext({ viewport: { width: 1280, height: 720 }, recordVideo: { dir: out, size: { width: 1280, height: 720 } }, acceptDownloads: true });
-  ctx.setDefaultTimeout(60000);
+  const ctx = await b.newContext({ viewport: { width: 1280, height: 720 }, acceptDownloads: true }); ctx.setDefaultTimeout(60000);
   const p = await ctx.newPage();
-  const errs = [];
-  p.on('pageerror', (e) => errs.push(e.message));
-  p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+  const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+  let pass = 0, fail = 0;
+  const log = (n, ok, d = '') => { ok ? pass++ : fail++; console.log(`${ok ? '통과' : '실패'}  ${n}${d ? '  — ' + d : ''}`); };
+  const st = () => p.evaluate(() => { const g = __game.game; return { phase: g.phase, player: g.player, spot: g.spot, n: g.spots().length, gauge: g.gauge.value, launches: __game.input.launches, result: g.result, x0: g.curr[0].p[0], x1: g.curr[1].p[0], yaw: g.curr[0].q.y }; });
+  const hold = async (lo, hi) => { await p.keyboard.down('Space'); await p.waitForFunction(([a, c]) => { const g = __game.game; return g.phase !== 'power' || (g.gauge.value >= a && g.gauge.value <= c); }, [lo, hi], { polling: 'raf' }); await p.keyboard.up('Space'); };
   await p.goto('file://' + path.join(__dirname, '..', 'dist', 'index.html'));
-  await p.waitForFunction(() => window.__game);
-  const st = () => p.evaluate(() => { const { game, input } = __game; return { phase: game.phase, player: game.player, aim: game.aim.slice(), gauge: game.gauge.value, launches: input.launches, result: game.result, y0: game.curr[0].p[1] }; });
-  // 게이지가 원하는 구간에 들어온 바로 그 프레임에 화면 버튼을 누른다(느린 환경에서도 같은 조작이 되도록)
-  const clickAt = (lo, hi) => p.evaluate(([lo, hi]) => new Promise((res) => { const f = () => { const v = __game.game.gauge.value; if (__game.game.phase === 'power' && v > lo && v < hi) { document.getElementById('fire').click(); res(v); } else requestAnimationFrame(f); }; f(); }), [lo, hi]);
-  const log = (n, ok, d = '') => console.log(`${ok ? '통과' : '실패'}  ${n}${d ? '  — ' + d : ''}`);
-  await p.waitForTimeout(800);
-  await p.screenshot({ path: path.join(out, '00_start.png') });
-  await p.keyboard.press('Space'); await p.waitForTimeout(250);
-  const pickShown = await p.isVisible('#pick');
-  await p.screenshot({ path: path.join(out, '00b_pick.png') });
-  await p.keyboard.press('Space'); await p.waitForTimeout(150);
-  let s0 = await st();
-  log('B0. 표지 → 지우개 고르기 → 놀이 순서로 넘어가고, 그 Space로 게이지가 시작되지는 않는다', pickShown && s0.phase === 'aim' && (await p.isHidden('#start')) && (await p.isHidden('#pick')));
-  // 이 시험은 올라타기를 반복 확인해야 하므로 가까운 검증 배치를 쓴다(일반 경기는 40cm 떨어져 시작)
-  const farStart = await p.evaluate(() => Math.abs(__game.game.curr[0].p[0] - __game.game.curr[1].p[0]));
-  await p.evaluate(() => { __game.localGame.layoutMode = 'near'; __game.localGame.restart(); __game.view.resetCamera(); });
-  log('B0b. 일반 경기는 멀리 떨어져 시작한다', farStart > 3.5, `두 지우개 사이 ${(farStart * 10).toFixed(0)}cm`);
-  // 연출이 실제로 나오는지 세어 둔다
-  await p.evaluate(() => { const u = __game.ui, o = u.pop.bind(u); window.__pops = []; u.pop = (t, ...a) => { __pops.push(t); o(t, ...a); }; window.__slowSeen = 0; window.__maxBits = 0; window.__hop = false; const f = () => { if (document.body.classList.contains('slow')) __slowSeen++; __maxBits = Math.max(__maxBits, __game.view.fx.bitC.items.length); if (__game.view.hop) __hop = true; requestAnimationFrame(f); }; f(); });
-  await p.waitForTimeout(1700);
-  // 프레임률 측정
-  const fps = await p.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; performance.now() - t0 < 1500 ? requestAnimationFrame(f) : res(n / 1.5); }; requestAnimationFrame(f); }));
-  console.log(`      이 환경의 그리기 속도: 약 ${fps.toFixed(0)}fps`);
-  await p.screenshot({ path: path.join(out, '01_aim.png') });
-
-  // 방향 조절
-  let a = await st();
-  await p.keyboard.down('ArrowRight'); await p.waitForTimeout(500); await p.keyboard.up('ArrowRight');
-  let c = await st();
-  log('B1. 방향키로 발사 방향이 바뀐다', c.aim[0] > a.aim[0] + 0.1 && c.phase === 'aim', `${(a.aim[0] * 57.3).toFixed(1)}도 → ${(c.aim[0] * 57.3).toFixed(1)}도`);
-  await p.keyboard.down('KeyA'); await p.waitForFunction((t) => __game.game.aim[0] <= t, 0.02); await p.keyboard.up('KeyA');
-  await p.evaluate(() => { __game.game.aim[0] = 0; });           // 프리셋과 같은 0도로 맞춘다
-  // 스페이스를 길게 눌러도(반복 입력) 게이지만 시작된다
-  await p.keyboard.down('Space'); for (let i = 0; i < 6; i++) { await p.keyboard.down('Space'); await p.waitForTimeout(60); }
-  c = await st();
-  log('B2. 스페이스를 길게 눌러도 게이지 시작과 발사가 동시에 일어나지 않는다', c.phase === 'power' && c.launches === 0);
-  await p.keyboard.down('ArrowRight'); await p.waitForTimeout(200); await p.keyboard.up('ArrowRight');
-  log('B3. 게이지가 움직이는 동안 방향은 고정된다', (await st()).aim[0] === 0);
-  await p.keyboard.up('Space');
-  await p.screenshot({ path: path.join(out, '02_gauge.png') });
-  // 왕복 게이지를 보고 55% 근처에서 튕긴다(일반 조작)
-  await p.waitForFunction(() => { const v = __game.game.gauge.value; return v > 0.62 && v < 0.7; }, null, { polling: 'raf' });
-  await p.keyboard.press('Space');
-  c = await st();
-  const usedPower = await p.evaluate(() => __game.game.shotPower);
-  log('B4. 게이지를 보고 튕기면 한 번만 발사된다', c.phase === 'physics' && c.launches === 1, `파워 ${(usedPower * 100).toFixed(0)}%`);
-  await p.keyboard.press('Space'); await p.keyboard.press('Space');
-  log('B5. 물리 진행 중 입력은 무시된다', (await st()).launches === 1);
-  await p.waitForTimeout(350); await p.screenshot({ path: path.join(out, '03_flying.png') });
-  await p.waitForFunction(() => __game.game.phase !== 'physics');
-  await p.waitForTimeout(700);
-  c = await st();
-  log('B6. 일반 조작으로 상대 위에 올라타 승리한다', c.phase === 'result' && c.result.reason === 'perch' && c.result.winner === 0, JSON.stringify(c.result));
+  await p.waitForFunction(() => window.__game); await p.waitForTimeout(500);
+  await p.screenshot({ path: path.join(out, '01_cover.png') });
+  // 표지 → 지우개 고르기 → 놀이
+  await p.click('#startBtn'); await p.waitForSelector('#pick:not([hidden])');
+  const cards = await p.$$eval('#cards0 .card', (c) => c.length);
+  await p.click('#cards0 .card:nth-child(2)'); await p.click('#cards1 .card:nth-child(7)'); await p.waitForTimeout(200);
+  await p.screenshot({ path: path.join(out, '02_pick.png') });
+  await p.click('#goBtn'); await p.waitForTimeout(2400);
+  let s = await st();
+  const types = await p.evaluate(() => __game.game.types);
+  log('B1. 지우개 11종 가운데 골라 시작하고, 일반 경기는 40cm 떨어져 시작한다', cards === 11 && types[0] === 'sharp' && types[1] === 'long' && Math.abs(s.x0 - s.x1) > 3.5 && s.phase === 'aim', `${types.join(' vs ')}, 거리 ${(Math.abs(s.x0 - s.x1) * 10).toFixed(0)}cm`);
+  await p.screenshot({ path: path.join(out, '03_aim.png') });
+  // 마우스로 시작 버튼을 누른 뒤 Space를 눌러도 다시 시작되지 않는다
+  const yaw0 = s.yaw; await p.keyboard.down('Space'); await p.waitForTimeout(60); await p.keyboard.up('Space'); await p.waitForTimeout(300);
+  s = await st();
+  log('B2. 살짝 건드린 것(짧은 탭)은 누른 것으로 치지 않고, 판이 다시 시작되지도 않는다', s.phase === 'aim' && s.launches === 0 && s.yaw === yaw0);
+  // 누름 자리 고르기
+  const spot0 = s.spot; await p.keyboard.press('ArrowRight'); await p.waitForTimeout(250);
+  s = await st(); const afterKey = s.spot;
+  const info1 = await p.textContent('#spotInfo');
+  await p.locator('#spots .spot').nth(0).dispatchEvent('pointerdown'); await p.waitForTimeout(150);
+  const viaMouse = await st(); await p.evaluate(() => __game.input.up()); await p.waitForTimeout(200);
+  log('B3. 방향키와 지우개 위의 점으로 누름 자리를 고른다', afterKey === (spot0 + 1) % s.n && viaMouse.spot === 0 && info1.includes('누르는 곳'), `자리 ${s.n}개, ${spot0} → ${afterKey} → 마우스로 0 / "${info1.trim()}"`);
+  // 꾹 누르기: 힘이 차는 동안 자리 고정, 떼면 한 번만 튕김
+  await p.evaluate(() => { __game.input.cycleTo(__game.game.bestSpot()); });
+  await p.keyboard.down('Space'); await p.waitForFunction(() => __game.game.gauge.value > 0.08, null, { polling: 'raf' });
+  const g1 = (await st()).gauge; await p.keyboard.press('ArrowRight');
+  await p.waitForFunction(() => __game.game.gauge.value > 0.24 || __game.game.phase !== 'power', null, { polling: 'raf' });
+  const mid = await st();
+  await p.keyboard.up('Space'); await p.keyboard.press('Space'); await p.waitForTimeout(150);
+  s = await st();
+  log('B4. 누르고 있는 동안 힘이 차오르고 자리는 고정되며, 떼는 순간 한 번만 튕긴다', mid.phase === 'power' && mid.gauge > g1 && mid.spot === (await p.evaluate(() => __game.game.lastShot.spot)) && s.phase === 'physics' && s.launches === 1, `힘 ${(g1 * 100).toFixed(0)}% → ${(mid.gauge * 100).toFixed(0)}% → 발사 ${((await p.evaluate(() => __game.game.shotPower)) * 100).toFixed(0)}%`);
+  await p.waitForTimeout(300); await p.screenshot({ path: path.join(out, '05_fly.png') });
+  await p.waitForFunction(() => __game.game.phase !== 'physics'); await p.waitForTimeout(1800);
+  s = await st();
+  log('B5. 승패가 없으면 2P 차례로 넘어간다', s.phase === 'aim' && s.player === 1, s.phase === 'result' ? JSON.stringify(s.result) : '');
+  await p.screenshot({ path: path.join(out, '06_p2_turn.png') });
+  // 끝까지 누르면 저절로 튕김(최대 힘)
+  await p.keyboard.down('Space'); await p.waitForFunction(() => __game.game.gauge.value > 0.5); await p.screenshot({ path: path.join(out, '04_press.png') }); await p.waitForFunction(() => __game.game.phase !== 'power' && __game.game.phase !== 'aim', null, { timeout: 20000 }); await p.keyboard.up('Space');
+  log('B6. 끝까지 누르고 있으면 손가락이 미끄러져 최대 힘으로 저절로 튕긴다', (await p.evaluate(() => __game.game.shotPower)) === 1);
+  await p.waitForFunction(() => __game.game.phase !== 'physics'); await p.waitForTimeout(800);
+  // 가까운 검증 배치에서 올라타기와 연출
+  await p.evaluate(() => { const u = __game.ui, o = u.pop.bind(u); window.__pops = []; u.pop = (t, ...a) => { __pops.push(t); o(t, ...a); }; window.__slow = 0; window.__bits = 0; window.__hop = false; const f = () => { if (document.body.classList.contains('slow')) __slow++; __bits = Math.max(__bits, __game.view.fx.bitC.items.length); if (__game.view.hop) __hop = true; requestAnimationFrame(f); }; f(); });
+  await p.click('#devBtn'); await p.click('#dbgPresetFire');
+  await p.waitForFunction(() => __game.game.phase === 'result'); await p.waitForTimeout(900);
   const title = await p.textContent('#resultTitle'), why = await p.textContent('#resultWhy');
-  log('B7. 결과와 이유가 화면에 표시된다', /1P 승리/.test(title) && /올라탔습니다/.test(why), `${title} / ${why}`);
-  await p.screenshot({ path: path.join(out, '04_perch_win.png') });
-
-  const fxSeen = await p.evaluate(() => ({ pops: __pops.slice(), slow: __slowSeen, bits: __maxBits, hop: __hop }));
-  log('B7b. 올라타는 순간 느린 화면·글자 효과·꽃가루·폴짝 연출이 나온다', fxSeen.slow > 0 && fxSeen.pops.includes('올라탔다?!') && fxSeen.bits > 20 && fxSeen.hop, `느린 화면 ${fxSeen.slow}프레임, 글자 ${fxSeen.pops.join(' ')}, 꽃가루 ${fxSeen.bits}개`);
-  // 다시 시작 → 2인 턴 진행
-  await p.click('#again'); await p.waitForTimeout(900);
-  c = await st();
-  log('B8. 한 판 더를 누르면 1P 조준 상태로 돌아간다', c.phase === 'aim' && c.player === 0 && c.result === null && c.launches === 1);
-  await p.keyboard.press('ArrowUp'); await p.waitForTimeout(400); const hitUp = await p.evaluate(() => ({ h: __game.game.hit, sel: document.querySelector('#hits .sel').textContent }));
-  await p.keyboard.press('ArrowDown');
-  log('B8b. 위아래 키로 누르는 곳을 고른다', hitUp.h === 2 && hitUp.sel === '뒤' && (await p.evaluate(() => __game.game.hit)) === 1);
-  await p.click('#fire'); await clickAt(0.2, 0.34);
-  await p.waitForFunction(() => __game.game.phase !== 'physics'); await p.waitForTimeout(1200);
-  c = await st();
-  log('B9. 약하게 튕기면 승패 없이 2P 차례로 넘어간다(화면 버튼 조작)', c.phase === 'aim' && c.player === 1, `파워 ${((await p.evaluate(() => __game.game.shotPower)) * 100).toFixed(0)}%`);
-  await p.screenshot({ path: path.join(out, '05_p2_turn.png') });
-  // 2P가 빈 쪽으로 방향을 돌려 아주 세게 → 책상 밖으로
-  await p.keyboard.down('KeyD'); await p.waitForFunction((t) => __game.game.aim[1] >= t, (await st()).aim[1] + 0.9); await p.keyboard.up('KeyD');
-  await p.keyboard.press('Space'); await clickAt(0.96, 1.01);
-  await p.waitForFunction(() => __game.game.phase !== 'physics'); await p.waitForTimeout(600);
-  c = await st();
-  log('B10. 2P가 너무 세게 튕기면 떨어져서 1P가 이긴다', c.phase === 'result' && c.result.reason === 'fell' && c.result.winner === 0, `${await p.textContent('#resultTitle')} / ${await p.textContent('#resultWhy')}`);
-  await p.screenshot({ path: path.join(out, '06_fell.png') });
-
-  const fellFx = await p.evaluate(() => __pops.includes('앗!!'));
-  log('B10b. 떨어질 때 글자 효과가 나온다', fellFx);
-  // 혼자 하기: 컴퓨터 상대와 필통
+  const fxs = await p.evaluate(() => ({ pops: __pops, slow: __slow, bits: __bits, hop: __hop, ticks: Math.round(__game.game.timers.phys * 240) }));
+  log('B7. 근거리 검증 프리셋으로 올라타 승리하고, 느린 화면·글자·꽃가루·폴짝 연출이 나온다', /1P 승리/.test(title) && /올라탔습니다/.test(why) && fxs.slow > 0 && fxs.pops.includes('올라탔다?!') && fxs.bits > 20 && fxs.hop, `${title} / ${why}`);
+  await p.screenshot({ path: path.join(out, '07_win.png') });
+  await p.click('#dbgReplay'); await p.waitForFunction(() => __game.game.phase === 'result' && __game.game.timers.phys > 0.2);
+  log('B8. 같은 조건으로 다시 발사하면 같은 시점에 같은 결과가 난다', (await p.evaluate(() => Math.round(__game.game.timers.phys * 240))) === fxs.ticks, `물리 걸음 수 ${fxs.ticks}`);
+  // 설정 내보내기·가져오기
+  await p.fill('#set_friction', '0.77'); await p.focus('#set_friction'); await p.keyboard.press('Space'); await p.keyboard.type('r');
+  await p.click('text=JSON 복사'); const json = await p.inputValue('#jsonBox');
+  const [dl] = await Promise.all([p.waitForEvent('download'), p.click('text=JSON 내려받기')]);
+  const dlPath = path.join(out, 'dl.json'); await dl.saveAs(dlPath); const dlOk = JSON.parse(fs.readFileSync(dlPath, 'utf8')).friction === 0.77; fs.unlinkSync(dlPath);
+  await p.click('text=기본값으로'); const reset = await p.evaluate(() => __game.game.pending.friction);
+  await p.fill('#jsonBox', json); await p.click('button:text-is("가져오기")'); const imp = await p.evaluate(() => __game.game.pending.friction);
+  await p.fill('#jsonBox', '{"version":1,"friction":99}'); await p.click('button:text-is("가져오기")');
+  log('B9. 설정 복사·내려받기·기본값·가져오기와 오류 표시가 동작한다', JSON.parse(json).friction === 0.77 && dlOk && reset === 0.6 && imp === 0.77 && /가져오지 못했습니다/.test(await p.textContent('#dev .err')));
+  await p.click('text=기본값으로'); await p.click('#devBtn');
+  // 혼자 하기: 컴퓨터가 스스로 자리를 고르고 누른다
   await p.evaluate(() => localStorage.removeItem('eraser-duel-save-v1'));
   await p.click('#change'); await p.click('#backBtn'); await p.click('#soloBtn'); await p.waitForTimeout(200);
-  const lockedCards = await p.evaluate(() => [...document.querySelectorAll('#cards0 .card')].filter((c) => c.disabled).length);
-  await p.screenshot({ path: path.join(out, '09_solo_pick.png') });
-  await p.click('#goBtn'); await p.waitForTimeout(300);
-  const before = c.launches + 1;
-  await p.evaluate(() => { __game.game.fire(Math.PI / 2, 0.2, 1); });            // 1P는 옆으로 살짝만
+  const locked = await p.$$eval('#cards0 .card', (c) => c.filter((x) => x.disabled).length);
+  await p.screenshot({ path: path.join(out, '08_solo_pick.png') });
+  await p.click('#goBtn'); await p.waitForTimeout(400);
+  await p.evaluate(() => { const g = __game.game; g.fireSpot(g.bestSpot(), 0.25); });
   await p.waitForFunction(() => __game.game.phase === 'aim' && __game.game.player === 1);
-  await p.keyboard.press('Space'); await p.keyboard.down('ArrowLeft'); await p.waitForTimeout(300); await p.keyboard.up('ArrowLeft');
-  const during = await p.evaluate(() => ({ launches: __game.input.launches, fireDisabled: document.getElementById('fire').disabled, status: document.getElementById('statusText').textContent }));
-  await p.waitForFunction(() => __game.game.lastShot && __game.game.lastShot.player === 1 && __game.game.phase !== 'aim' && __game.game.phase !== 'power', null, { timeout: 60000 });
-  const cpuShot = await p.evaluate(() => ({ power: __game.game.lastShot.power, hit: __game.game.lastShot.hit }));
-  log('B18. 혼자 하기에서 컴퓨터가 스스로 방향·세기를 재고 튕기며, 그동안 내 입력은 받지 않는다', lockedCards === 3 && during.fireDisabled && /컴퓨터/.test(during.status) && cpuShot.power > 0.1, `컴퓨터 발사: 파워 ${(cpuShot.power * 100).toFixed(0)}%, 누르는 곳 ${cpuShot.hit}, 표시 "${during.status}"`);
-  await p.waitForFunction(() => __game.game.phase !== 'physics', null, { timeout: 60000 }); await p.waitForTimeout(500);
-  await p.screenshot({ path: path.join(out, '10_solo_after_cpu.png') });
-  // 내가 이기면 상대 지우개를 딴다
-  await p.evaluate(() => { __game.ui.rematch(); });
-  const cpuType = await p.evaluate(() => __game.game.types[1]);
-  await p.evaluate(() => { const g = __game.game; g.types = ['normal', 'normal']; __game.ui.picks = ['normal', 'normal']; g.restart(); g.fire(0, 0.65, 1); });
+  await p.keyboard.down('Space'); await p.waitForTimeout(300); await p.keyboard.up('Space'); await p.keyboard.press('ArrowRight');
+  const during = await p.evaluate(() => ({ launches: __game.input.launches, status: document.getElementById('statusText').textContent, phase: __game.game.phase }));
+  await p.waitForFunction(() => __game.game.lastShot && __game.game.lastShot.player === 1 && __game.game.phase !== 'aim' && __game.game.phase !== 'power', null, { timeout: 90000 });
+  const cpuShot = await p.evaluate(() => ({ power: __game.game.lastShot.power, spot: __game.game.lastShot.spot }));
+  log('B10. 혼자 하기에서 컴퓨터가 스스로 자리를 고르고 눌러 튕기며, 그동안 내 입력은 받지 않는다', locked === 10 && /컴퓨터/.test(during.status) && cpuShot.power > 0.1 && cpuShot.spot >= 0, `컴퓨터: 자리 ${cpuShot.spot}, 힘 ${(cpuShot.power * 100).toFixed(0)}% / "${during.status}"`);
+  await p.waitForFunction(() => __game.game.phase !== 'physics', null, { timeout: 60000 }); await p.waitForTimeout(400);
+  await p.evaluate(() => { const g = __game.localGame; g.types = ['normal', 'normal']; __game.ui.picks = ['normal', 'normal']; g.layoutMode = 'near'; g.restart(); g.fire(0, 0.65, 1); });
   await p.waitForFunction(() => __game.game.phase === 'result'); await p.waitForTimeout(700);
-  const save = await p.evaluate(() => ({ s: JSON.parse(localStorage.getItem('eraser-duel-save-v1')), extra: document.getElementById('resultExtra').textContent, title: document.getElementById('resultTitle').textContent }));
-  log('B19. 혼자 하기에서 이기면 상대 지우개를 따서 필통에 저장된다', save.s.wins === 1 && save.s.erasers.normal === 2 && /땄다/.test(save.extra), `${save.title} / ${save.extra} / 필통 ${JSON.stringify(save.s.erasers)}`);
-  await p.screenshot({ path: path.join(out, '11_solo_win.png') });
-  await p.click('#change'); await p.click('#backBtn'); await p.keyboard.press('Space'); await p.keyboard.press('Space'); await p.waitForTimeout(300);
-  c = await st();
-  // 개발자 패널: 설정 내보내기·가져오기, 입력 중 단축키 차단, 프리셋
-  await p.click('#devBtn');
-  await p.fill('#set_friction', '0.77');
-  await p.focus('#set_friction'); await p.keyboard.press('Space'); await p.keyboard.type('r');
-  c = await st();
-  log('B11. 패널에 값을 넣는 동안 게임 단축키가 실행되지 않는다', c.phase === 'aim' && c.launches === 3 && (await p.inputValue('#set_friction')).includes('0.77'), `발사 횟수 그대로 ${c.launches}`);
-  await p.click('text=JSON 복사');
-  const json = await p.inputValue('#jsonBox');
-  const exported = JSON.parse(json);
-  const [dl] = await Promise.all([p.waitForEvent('download'), p.click('text=JSON 내려받기')]);
-  const dlPath = path.join(out, 'downloaded-settings.json'); await dl.saveAs(dlPath);
-  const dlOk = JSON.parse(fs.readFileSync(dlPath, 'utf8')).friction === 0.77; fs.unlinkSync(dlPath);
-  await p.click('text=기본값으로');
-  const afterReset = await p.evaluate(() => __game.game.pending.friction);
-  await p.fill('#jsonBox', json); await p.click('button:text-is("가져오기")');
-  const afterImport = await p.evaluate(() => __game.game.pending.friction);
-  log('B12. 설정 JSON 복사·내려받기·기본값·가져오기가 동작한다', exported.friction === 0.77 && exported.version === 1 && dlOk && afterReset === 0.6 && afterImport === 0.77, `내보낸 값 0.77 → 기본값 ${afterReset} → 가져온 값 ${afterImport}`);
-  await p.fill('#jsonBox', '{"version":1,"friction":99}'); await p.click('button:text-is("가져오기")');
-  const errText = await p.textContent('#dev .err');
-  log('B13. 잘못된 설정은 이유를 보여 주고 거부한다', /가져오지 못했습니다/.test(errText) && (await p.evaluate(() => __game.game.pending.friction)) === 0.77, errText.split('\n').slice(0, 2).join(' '));
-  // 프리셋 3회 반복
-  const finals = [];
-  for (let i = 0; i < 3; i++) {
-    await p.click(i === 0 ? '#dbgPresetFire' : '#dbgReplay');
-    await p.waitForFunction(() => __game.game.phase === 'result');
-    finals.push(await p.evaluate(() => ({ r: __game.game.result, p: __game.game.lastShot && __game.game.curr[0].p, ticks: Math.round(__game.game.timers.phys * 240) })));
-    if (i === 0) { await p.waitForTimeout(500); await p.screenshot({ path: path.join(out, '07_dev_panel_preset.png') }); }
-  }
-  log('B14. 프리셋 발사와 "같은 조건으로 다시 발사"가 브라우저에서 같은 결과를 낸다', finals.every((f) => f.r.reason === 'perch' && f.r.winner === 0 && f.ticks === finals[0].ticks), `승리 확정까지 걸음 수 ${finals.map((f) => f.ticks).join(' / ')}`);
-  // 저장·복원
-  await p.click('text=기본값으로'); await p.evaluate(() => __game.input.restart());
-  await p.fill('#dbgAngle', '5'); await p.fill('#dbgPower', '30');
-  await p.click('#dbgSave'); await p.click('#dbgFire'); await p.waitForFunction(() => __game.game.phase !== 'physics');
-  const moved = await p.evaluate(() => __game.game.curr[0].p[0]);
-  await p.click('#dbgRestore');
-  c = await p.evaluate(() => ({ x: __game.game.curr[0].p[0], phase: __game.game.phase, player: __game.game.player, t: __game.game.timers, a: __game.game.aim[0] }));
-  log('B15. 발사 전 상태 저장·복원이 동작한다', moved > -0.7 && Math.abs(c.x + 0.75) < 1e-6 && c.phase === 'aim' && c.player === 0 && c.t.phys === 0 && Math.abs(c.a - 5 * Math.PI / 180) < 1e-6, `발사 후 x=${moved.toFixed(2)} → 복원 x=${c.x.toFixed(2)}`);
+  const save = await p.evaluate(() => ({ s: JSON.parse(localStorage.getItem('eraser-duel-save-v1')), extra: document.getElementById('resultExtra').textContent }));
+  log('B11. 혼자 하기에서 이기면 상대 지우개를 따서 필통에 저장된다', save.s.wins === 1 && save.s.erasers.normal === 2 && /땄다/.test(save.extra), `${save.extra} / 보통 ×${save.s.erasers.normal}`);
   // 좁은 화면
-  await p.click('#devBtn');
+  await p.evaluate(() => { __game.localGame.layoutMode = 'match'; __game.ui.rematch(); }); await p.waitForTimeout(600);
   await p.setViewportSize({ width: 420, height: 760 }); await p.waitForTimeout(900);
-  const fit = await p.evaluate(() => ['tag0', 'tag1', 'bar', 'devBtn', 'mute'].every((id) => { const r = document.getElementById(id).getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1; }));
-  log('B16. 좁은 화면에서도 조작 버튼과 정보가 화면 안에 있다', fit);
-  await p.screenshot({ path: path.join(out, '08_narrow.png') });
-  log('B17. 브라우저 오류가 없다', errs.length === 0, errs.slice(0, 3).join(' | '));
-  const video = p.video();
-  await ctx.close(); await b.close();
-  const vp = await video.path(); fs.renameSync(vp, path.join(out, 'play_session.webm'));
-  console.log('녹화:', path.join(out, 'play_session.webm'), (fs.statSync(path.join(out, 'play_session.webm')).size / 1024).toFixed(0) + 'KB');
-})();
+  const fit = await p.evaluate(() => ['tag0', 'tag1', 'bar', 'devBtn', 'mute', 'fire'].every((id) => { const r = document.getElementById(id).getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1; }));
+  log('B12. 좁은 화면에서도 조작 버튼과 정보가 화면 안에 있다', fit);
+  await p.screenshot({ path: path.join(out, '09_narrow.png') });
+  log('B13. 브라우저 오류가 없다', errs.length === 0, errs.slice(0, 3).join(' | '));
+  await b.close();
+  console.log(`\n통과 ${pass} / 실패 ${fail}`);
+  process.exit(fail ? 1 : 0);
+})().catch((e) => { console.error(e); process.exit(1); });
