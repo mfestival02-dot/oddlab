@@ -17,7 +17,56 @@ export const TYPES = {
   mini:   { name: '꼬마', dims: [0.18, 0.045, 0.105], mass: 0.5, fr: 1.06, re: 0.66, ang: 2.48, lift: 0.83, spin: -0.15, push: 1.05, spots: 'edges4', desc: '작고 가벼워요' },
   jumbo:  { name: '점보', dims: [0.33, 0.065, 0.165], mass: 2.1, fr: 1.2, re: 0.6, spots: 'all8', desc: '무겁고 넓어요' },
   bouncy: { name: '탱탱', dims: [0.23, 0.06, 0.12], mass: 0.8, fr: 1.52, re: 1.69, ang: 2.61, lift: 1.26, spin: -0.2, push: 0.89, spots: 'diag6', desc: '통통 튀어요' },
+  // ---- 모양 지우개: parts는 충돌 덩어리이자 그리는 덩어리(box 반치수 h / cyl 반높이 hh·반지름 rad, 축은 y / ball / hull 점들). p는 위치, r은 회전(라디안).
+  bear:   { name: '곰', group: '동물', mass: 0.9, fr: 1.0, re: 0.9, spots: 'animal6', desc: '둥글둥글, 귀가 걸려요', tone: 0.0,
+    parts: [{ s: 'cyl', hh: 0.05, rad: 0.16, p: [-0.09, 0, 0] }, { s: 'cyl', hh: 0.05, rad: 0.12, p: [0.15, 0, 0] }, { s: 'cyl', hh: 0.05, rad: 0.045, p: [0.24, 0, 0.1] }, { s: 'cyl', hh: 0.05, rad: 0.045, p: [0.24, 0, -0.1] }],
+    decor: [{ s: 'eye', p: [0.18, 0.05, 0.05] }, { s: 'eye', p: [0.18, 0.05, -0.05] }, { s: 'nose', p: [0.235, 0.05, 0] }] },
+  rabbit: { name: '토끼', group: '동물', mass: 0.6, fr: 0.95, re: 1.2, spots: 'animal6', desc: '가볍고 긴 귀가 삐죽', tone: 0.35,
+    parts: [{ s: 'cyl', hh: 0.045, rad: 0.13, p: [-0.12, 0, 0] }, { s: 'cyl', hh: 0.045, rad: 0.1, p: [0.07, 0, 0] }, { s: 'box', h: [0.11, 0.045, 0.03], p: [0.26, 0, 0.05], r: [0, -0.12, 0] }, { s: 'box', h: [0.11, 0.045, 0.03], p: [0.26, 0, -0.05], r: [0, 0.12, 0] }],
+    decor: [{ s: 'eye', p: [0.09, 0.045, 0.045] }, { s: 'eye', p: [0.09, 0.045, -0.045] }, { s: 'nose', p: [0.15, 0.045, 0] }] },
+  turtle: { name: '거북이', group: '동물', mass: 1.7, fr: 1.25, re: 0.45, spots: 'edges4', desc: '묵직하고 잘 안 넘어져요', tone: -0.25,
+    parts: [{ s: 'cyl', hh: 0.07, rad: 0.17, p: [0, 0, 0] }, { s: 'cyl', hh: 0.04, rad: 0.06, p: [0.22, -0.03, 0] }, { s: 'cyl', hh: 0.03, rad: 0.05, p: [0.12, -0.04, 0.15] }, { s: 'cyl', hh: 0.03, rad: 0.05, p: [0.12, -0.04, -0.15] }, { s: 'cyl', hh: 0.03, rad: 0.05, p: [-0.12, -0.04, 0.15] }, { s: 'cyl', hh: 0.03, rad: 0.05, p: [-0.12, -0.04, -0.15] }],
+    decor: [{ s: 'eye', p: [0.245, 0.01, 0.03] }, { s: 'eye', p: [0.245, 0.01, -0.03] }] },
+  wrest1: { name: '레슬러', group: '레슬링', mass: 0.8, fr: 1.05, re: 0.9, spots: 'ends6', desc: '팔다리가 걸려 잘 얹혀요', tone: 0.15,
+    parts: [{ s: 'box', h: [0.09, 0.045, 0.07], p: [0, 0, 0] }, { s: 'cyl', hh: 0.045, rad: 0.055, p: [0.15, 0, 0] }, { s: 'box', h: [0.035, 0.04, 0.09], p: [0.05, 0, 0.15], r: [0, -0.4, 0] }, { s: 'box', h: [0.035, 0.04, 0.09], p: [0.05, 0, -0.15], r: [0, 0.4, 0] }, { s: 'box', h: [0.1, 0.04, 0.035], p: [-0.17, 0, 0.07], r: [0, 0.35, 0] }, { s: 'box', h: [0.1, 0.04, 0.035], p: [-0.17, 0, -0.07], r: [0, -0.35, 0] }],
+    decor: [{ s: 'eye', p: [0.16, 0.045, 0.022] }, { s: 'eye', p: [0.16, 0.045, -0.022] }] },
+  wrest2: { name: '덩치', group: '레슬링', mass: 1.5, fr: 1.15, re: 0.6, spots: 'all8', desc: '두툼하고 힘이 세요', tone: -0.1,
+    parts: [{ s: 'box', h: [0.1, 0.075, 0.09], p: [0, 0, 0] }, { s: 'ball', rad: 0.065, p: [0.14, 0.02, 0] }, { s: 'box', h: [0.05, 0.05, 0.04], p: [0.03, -0.025, 0.125] }, { s: 'box', h: [0.05, 0.05, 0.04], p: [0.03, -0.025, -0.125] }, { s: 'box', h: [0.06, 0.04, 0.04], p: [-0.15, -0.035, 0.05] }, { s: 'box', h: [0.06, 0.04, 0.04], p: [-0.15, -0.035, -0.05] }],
+    decor: [{ s: 'eye', p: [0.185, 0.05, 0.025] }, { s: 'eye', p: [0.185, 0.05, -0.025] }] },
+  roll:   { name: '육각', group: '특이', mass: 0.75, fr: 1.1, re: 0.7, ang: 1.6, spots: 'edges4', desc: '옆으로 누르면 데굴데굴 구르다 면으로 멈춰요', tone: 0.25,
+    parts: [{ s: 'hull', pts: [-0.19, 0.19].flatMap((x) => [0, 1, 2, 3, 4, 5].map((i) => [x, Math.cos((i * Math.PI) / 3 + Math.PI / 6) * 0.078, Math.sin((i * Math.PI) / 3 + Math.PI / 6) * 0.078])) }] },
+  prism:  { name: '삼각', group: '특이', mass: 0.8, fr: 1.1, re: 0.8, spots: 'edges4', desc: '뾰족해서 위에 얹히기 어려워요', tone: -0.35,
+    parts: [{ s: 'hull', pts: [[0.2, -0.07, 0.1], [0.2, -0.07, -0.1], [0.2, 0.085, 0], [-0.2, -0.07, 0.1], [-0.2, -0.07, -0.1], [-0.2, 0.085, 0]] }] },
 };
+// 모양 정보: 덩어리들의 무게중심을 원점으로 옮기고, 전체를 감싸는 반치수(dims)를 구해 둔다.
+const eul = ([x, y, z]) => { const c = Math.cos, s2 = Math.sin, cx = c(x / 2), sx = s2(x / 2), cy = c(y / 2), sy = s2(y / 2), cz = c(z / 2), sz = s2(z / 2); return { x: sx * cy * cz + cx * sy * sz, y: cx * sy * cz - sx * cy * sz, z: cx * cy * sz + sx * sy * cz, w: cx * cy * cz - sx * sy * sz }; };
+const qrot = (q, v) => { const { x, y, z, w } = q, tx = 2 * (y * v[2] - z * v[1]), ty = 2 * (z * v[0] - x * v[2]), tz = 2 * (x * v[1] - y * v[0]); return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)]; };
+const shapes = {};
+export function shapeOf(type) {
+  if (shapes[type]) return shapes[type];
+  const T = TYPES[type];
+  if (!T.parts) return (shapes[type] = { plain: true, parts: [{ s: 'box', h: T.dims, p: [0, 0, 0], q: eul([0, 0, 0]), round: T.round, vol: 1 }], decor: [], dims: T.dims });
+  const parts = T.parts.map((pt) => {
+    const q = eul(pt.r || [0, 0, 0]);
+    let vol, corners, c = pt.p ? [...pt.p] : [0, 0, 0];
+    if (pt.s === 'box') { vol = 8 * pt.h[0] * pt.h[1] * pt.h[2]; corners = [-1, 1].flatMap((a) => [-1, 1].flatMap((b) => [-1, 1].map((d) => [a * pt.h[0], b * pt.h[1], d * pt.h[2]]))); }
+    else if (pt.s === 'cyl') { vol = 2 * pt.hh * Math.PI * pt.rad ** 2; corners = [-1, 1].flatMap((a) => [-1, 1].flatMap((b) => [-1, 1].map((d) => [a * pt.rad, b * pt.hh, d * pt.rad]))); }
+    else if (pt.s === 'ball') { vol = (4 / 3) * Math.PI * pt.rad ** 3; corners = [-1, 1].flatMap((a) => [-1, 1].flatMap((b) => [-1, 1].map((d) => [a * pt.rad, b * pt.rad, d * pt.rad]))); }
+    else { corners = pt.pts; const n = pt.pts.length; c = [0, 1, 2].map((k) => pt.pts.reduce((a, v) => a + v[k], 0) / n); vol = 0.02; }
+    return { ...pt, q, vol, c, corners: pt.s === 'hull' ? pt.pts : corners.map((v) => qrot(q, v).map((x, k) => x + c[k])) };
+  });
+  const tot = parts.reduce((a, p) => a + p.vol, 0), com = [0, 1, 2].map((k) => parts.reduce((a, p) => a + p.c[k] * p.vol, 0) / tot);
+  const dims = [0, 0, 0];
+  for (const p of parts) {
+    if (p.s === 'hull') p.pts = p.pts.map((v) => v.map((x, k) => x - com[k])); else p.p = p.c.map((x, k) => x - com[k]);
+    for (const v of p.corners) for (let k = 0; k < 3; k++) dims[k] = Math.max(dims[k], Math.abs(v[k] - com[k]));
+    p.vol /= tot;
+  }
+  const decor = (T.decor || []).map((d) => ({ ...d, p: d.p.map((x, k) => x - com[k]) }));
+  T.dims = dims.map((v) => Math.round(v * 1000) / 1000);
+  return (shapes[type] = { plain: false, parts, decor, dims: T.dims });
+}
+for (const k of Object.keys(TYPES)) shapeOf(k);
 export const TYPE_KEYS = Object.keys(TYPES);
 // 누름 자리: 지금 위로 온 면의 긴 방향 s, 짧은 방향 t (-1~1). 지우개는 누른 자리의 반대쪽으로 튀어 나간다.
 // 가장자리 가운데(면)는 곧게, 꼭짓점은 대각선 축으로 구르며 튀어 읽기 어렵다.
@@ -32,6 +81,7 @@ export const SPOT_SETS = {
   long6:  [E.end1, [-0.5, 1, '옆'], [0.5, 1, '옆'], E.end2, [0.5, -1, '옆'], [-0.5, -1, '옆']],
   art6:   [E.end1, E.side2, E.end2, E.side1, [-0.5, 0, '안쪽'], [0.5, 0, '안쪽']],
   diag6:  [E.end1, C.c2, E.side2, E.end2, C.c4, E.side1],
+  animal6: [E.end1, E.side2, C.c3, E.end2, C.c4, E.side1],
 };
 export const spotsOf = (type) => SPOT_SETS[TYPES[type].spots];
 // 누르는 위치: v는 위로 뜨는 힘, h는 앞으로 가는 힘, spin은 회전에 더하는 값

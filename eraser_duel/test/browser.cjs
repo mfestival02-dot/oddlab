@@ -22,7 +22,7 @@ const out = path.join(__dirname, '..', 'shots');
   await p.click('#goBtn'); await p.waitForTimeout(2400);
   let s = await st();
   const types = await p.evaluate(() => __game.game.types);
-  log('B1. 지우개 11종 가운데 골라 시작하고, 일반 경기는 40cm 떨어져 시작한다', cards === 11 && types[0] === 'sharp' && types[1] === 'long' && Math.abs(s.x0 - s.x1) > 3.5 && s.phase === 'aim', `${types.join(' vs ')}, 거리 ${(Math.abs(s.x0 - s.x1) * 10).toFixed(0)}cm`);
+  log('B1. 지우개 18종 가운데 골라 시작하고, 일반 경기는 40cm 떨어져 시작한다', cards === 18 && types[0] === 'sharp' && types[1] === 'long' && Math.abs(s.x0 - s.x1) > 3.5 && s.phase === 'aim', `${types.join(' vs ')}, 거리 ${(Math.abs(s.x0 - s.x1) * 10).toFixed(0)}cm`);
   await p.screenshot({ path: path.join(out, '03_aim.png') });
   // 마우스로 시작 버튼을 누른 뒤 Space를 눌러도 다시 시작되지 않는다
   const yaw0 = s.yaw; await p.keyboard.down('Space'); await p.waitForTimeout(60); await p.keyboard.up('Space'); await p.waitForTimeout(300);
@@ -85,7 +85,7 @@ const out = path.join(__dirname, '..', 'shots');
   const during = await p.evaluate(() => ({ launches: __game.input.launches, status: document.getElementById('statusText').textContent, phase: __game.game.phase }));
   await p.waitForFunction(() => __game.game.lastShot && __game.game.lastShot.player === 1 && __game.game.phase !== 'aim' && __game.game.phase !== 'power', null, { timeout: 90000 });
   const cpuShot = await p.evaluate(() => ({ power: __game.game.lastShot.power, spot: __game.game.lastShot.spot }));
-  log('B10. 혼자 하기에서 컴퓨터가 스스로 자리를 고르고 눌러 튕기며, 그동안 내 입력은 받지 않는다', locked === 10 && /컴퓨터/.test(during.status) && cpuShot.power > 0.1 && cpuShot.spot >= 0, `컴퓨터: 자리 ${cpuShot.spot}, 힘 ${(cpuShot.power * 100).toFixed(0)}% / "${during.status}"`);
+  log('B10. 혼자 하기에서 컴퓨터가 스스로 자리를 고르고 눌러 튕기며, 그동안 내 입력은 받지 않는다', locked === 17 && /컴퓨터/.test(during.status) && cpuShot.power > 0.1 && cpuShot.spot >= 0, `컴퓨터: 자리 ${cpuShot.spot}, 힘 ${(cpuShot.power * 100).toFixed(0)}% / "${during.status}"`);
   await p.waitForFunction(() => __game.game.phase !== 'physics', null, { timeout: 60000 }); await p.waitForTimeout(400);
   await p.evaluate(() => { const g = __game.localGame; g.types = ['normal', 'normal']; __game.ui.picks = ['normal', 'normal']; g.layoutMode = 'near'; g.restart(); g.fire(0, 0.65, 1); });
   await p.waitForFunction(() => __game.game.phase === 'result'); await p.waitForTimeout(700);

@@ -2,6 +2,14 @@
 import { TYPES, spotsOf } from './config.js';
 import { PLAYER } from './view.js';
 const el = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); kids.forEach((k) => e.append(k)); return e; };
+import STATS from './stats.json';
+// 실제로 잰 능력치 막대(tools/measure_stats.mjs)
+export function abilityBars(key, side) {
+  const s = STATS[key] || {}, box = el('span', { className: 'abil' });
+  box.style.setProperty('--c', PLAYER[side].css);
+  for (const [label, v] of [['속도', s.speed], ['튀는 높이', s.hop], ['균형', s.balance], ['무게', s.weight]]) { const b = el('b', {}, [el('i')]); b.firstChild.style.width = Math.round(Math.max(0.06, Math.min(1, v || 0)) * 100) + '%'; box.append(el('span', {}, [label, b])); }
+  return box;
+}
 export function eraserCard(view, key, side, { selected = false, disabled = false, badge = '' } = {}) {
   const T = TYPES[key], spots = spotsOf(key);
   const c = el('button', { className: 'card' + (selected ? ' sel' : ''), disabled, title: T.desc });

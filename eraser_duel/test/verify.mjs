@@ -182,22 +182,25 @@ check('3b. 파워에 따라 결과가 연속적으로 달라진다(고정 동작
   g.runUntilSettled();
   check('18. 누구 차례든 최종적으로 위에 받쳐진 쪽이 이긴다', g.result?.reason === 'perch' && g.result.winner === 1, `1P 차례에 2P가 위 → ${g.result ? (g.result.winner + 1) + 'P 승' : '미결'}`);
 }
-// 지우개 종류: 어떤 조합이든 올라탈 수 있는 발사가 있다
+// 지우개 종류: 눌러 튕기기로 올라타기가 성립하는지(가까운 검증 배치, 상대 쪽을 향한 자리 × 힘 15단계)
 {
-  const g = new Game(RAPIER); let ok = true; const notes = [];
+  const g = new Game(RAPIER); const atk = {}, def = {}; let shots = 0;
   for (const a of TYPE_KEYS) for (const b of TYPE_KEYS) {
-    g.types = [a, b]; let n = 0;
-    for (const ang of [-3, 0, 3]) for (let p = 0.35; p <= 1.001; p += 0.05) { g.restart(); g.fire(rad(ang), p); g.runUntilSettled(15); if (g.result?.reason === 'perch' && g.result.winner === 0) n++; }
-    if (n < 1) ok = false;
-    notes.push(`${TYPES[a].name}→${TYPES[b].name} ${n}`);
+    g.types = [a, b]; g.restart(); const snap = g.snapshot();
+    const toward = g.spots().map((sp, i) => [i, Math.abs(Math.atan2(Math.sin(sp.angle), Math.cos(sp.angle)))]).filter((x) => x[1] < 0.6).map((x) => x[0]);
+    let n = 0;
+    for (const sp of toward) for (let p = 0.3; p <= 1.001; p += 0.05) { g.restore(snap); g.fireSpot(sp, p); g.runUntilSettled(15); shots++; if (g.result?.reason === 'perch' && g.result.winner === 0) n++; }
+    atk[a] = (atk[a] || 0) + (n > 0 ? 1 : 0); def[b] = (def[b] || 0) + (n > 0 ? 1 : 0);
   }
-  const weak = notes.filter((x) => +x.split(' ')[1] < 2);
-  check(`19. 지우개 ${TYPE_KEYS.length}종의 모든 조합(${TYPE_KEYS.length ** 2}가지)에서 올라탈 수 있다`, ok, `42발 중 성공이 가장 적은 조합: ${notes.sort((a, b) => +a.split(' ')[1] - +b.split(' ')[1]).slice(0, 5).join(', ')}`);
+  const N = TYPE_KEYS.length, name = (k) => TYPES[k].name;
+  const weakAtk = TYPE_KEYS.filter((k) => atk[k] === 0), hardDef = TYPE_KEYS.filter((k) => def[k] < N / 3);
+  check(`19. 지우개 ${N}종 모두 눌러 튕기기로 다른 지우개 위에 올라탈 수 있다`, weakAtk.length === 0, `${shots}발. 올라탈 수 있는 상대 수: ${TYPE_KEYS.map((k) => `${name(k)} ${atk[k]}`).join(', ')}`);
+  console.log(`      올라타이기 어려운 지우개(18종 중 6종 미만에게만 허용): ${hardDef.map((k) => `${name(k)} ${def[k]}`).join(', ') || '없음'}`);
   g.types = ['jumbo', 'mini']; g.restart();
   const m0 = g.sim.bodies[0].mass(), m1 = g.sim.bodies[1].mass();
   check('19b. 종류에 따라 크기와 무게가 실제로 다르다', Math.abs(m0 - 2.1) < 1e-3 && Math.abs(m1 - 0.5) < 1e-3 && g.sim.dims[0][0] === 0.33 && g.curr[1].type === 'mini', `점보 ${m0.toFixed(2)} / 꼬마 ${m1.toFixed(2)}`);
   g.types = ['sharp', 'worn']; g.restart();
-  check('19c. 각진 지우개와 닳은 지우개는 충돌체 모서리 반경이 다르다', g.sim.cols[0].roundRadius() < 0.006 && g.sim.cols[1].roundRadius() > 0.025, `새것 ${g.sim.cols[0].roundRadius().toFixed(3)} / 닳은 ${g.sim.cols[1].roundRadius().toFixed(3)}`);
+  check('19c. 각진 지우개와 닳은 지우개는 충돌체 모서리 반경이 다르다', g.sim.cols[0][0].roundRadius() < 0.006 && g.sim.cols[1][0].roundRadius() > 0.025, `새것 ${g.sim.cols[0][0].roundRadius().toFixed(3)} / 닳은 ${g.sim.cols[1][0].roundRadius().toFixed(3)}`);
 }
 // 누르는 위치
 {

@@ -29,7 +29,7 @@ export class Game {
     this.prev = this.sim.getState().bodies; this.curr = this.prev;
     this.acc = 0;
     this.timers = { phys: 0, stable: 0, perch: 0, other: 0 };
-    this.perchOwner = null;
+    this.perchOwner = null; this.lastUp = null; this.lastUpT = 0; this.poseRef = null; this.poseAt = -9; this.stillFor = 0;
     this.stuck = false;
     this.result = null;
     this.gauge = { t: 0, value: 0 };
@@ -195,8 +195,18 @@ export class Game {
     // 오래 걸리면 미세한 떨림은 멈춘 것으로 봐 준다. 그래도 안 끝나면 다시 시도를 안내한다.
     const relax = T.phys > 10 ? 3 : 1;
     const slow = [0, 1].map((i) => { const v = sim.speeds(i); return v.lin < S.stableLin * relax && v.ang < S.stableAng * relax; });
+    // 제자리에서 까딱거리기만 하는 것은 멈춘 것으로 본다: 1초 동안 위치(1mm)와 자세(약 2도)가 그대로이면 '제자리'
+    if (T.phys - (this.poseAt ?? -9) >= 1) {
+      const same = this.poseRef && this.curr.every((c, i) => { const r = this.poseRef[i]; return Math.hypot(c.p[0] - r.p[0], c.p[1] - r.p[1], c.p[2] - r.p[2]) < 0.01 && Math.abs(c.q.x * r.q.x + c.q.y * r.q.y + c.q.z * r.q.z + c.q.w * r.q.w) > 0.9994; });
+      this.stillFor = same ? (this.stillFor || 0) + 1 : 0;
+      this.poseRef = this.curr.map((c) => ({ p: [...c.p], q: { ...c.q } })); this.poseAt = T.phys;
+    }
+    if (this.stillFor >= 2) { slow[0] = slow[1] = true; }
     const fallen = sim.fallen;
     this.info = sim.contact();
+    // 받침 판단이 한두 순간 끊기는 것은 이어서 본다(여러 덩어리로 된 지우개는 접촉이 깜빡일 수 있다)
+    if (this.info.upper !== null) { this.lastUp = this.info.upper; this.lastUpT = T.phys; }
+    else if (this.lastUp != null && T.phys - this.lastUpT < 0.12 && this.info.touching) this.info.upper = this.lastUp;
 
     // 1) 낙하를 먼저 본다
     if (fallen[0] || fallen[1]) {
@@ -227,7 +237,7 @@ export class Game {
     this.phase = PHASE.AIM;
     this.gauge = { t: 0, value: 0 };
     this.timers = { phys: 0, stable: 0, perch: 0, other: 0 };
-    this.perchOwner = null;
+    this.perchOwner = null; this.lastUp = null; this.lastUpT = 0; this.poseRef = null; this.poseAt = -9; this.stillFor = 0;
     this.hit = 1; this.pressing = false;
     // 다음 사람의 기본 방향은 상대 쪽
     const a = this.curr[this.player].p, b = this.curr[1 - this.player].p;

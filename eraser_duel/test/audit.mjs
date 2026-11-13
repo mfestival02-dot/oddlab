@@ -15,7 +15,7 @@ const euler = (x, y, z) => { const c = Math.cos, s = Math.sin; const [cx, sx, cy
 // 1. 관통: 최대 파워를 포함한 발사에서 책상 아래로 파고들거나 상대를 뚫고 지나가는가
 {
   let worst = 0, worstAt = '', through = 0, n = 0;
-  for (const t of TYPE_KEYS) for (const hit of [0, 1, 2]) for (const ang of [-20, -6, 0, 6, 20]) for (const p of [0.6, 0.8, 1.0]) {
+  for (const t of TYPE_KEYS.filter((k) => !TYPES[k].parts)) for (const hit of [0, 1, 2]) for (const ang of [-20, -6, 0, 6, 20]) for (const p of [0.6, 0.8, 1.0]) {      // 꼭짓점 위치를 정확히 아는 직육면체로 잰다
     const g = new Game(RAPIER); g.layoutMode = 'near'; g.types = [t, 'jumbo']; g.restart(); g.fire((ang * Math.PI) / 180, p, hit); n++;
     let tt = 0, prevSide = Math.sign(g.curr[0].p[0] - g.curr[1].p[0]);
     while (g.phase === PHASE.PHYSICS && tt < 6) {
@@ -54,7 +54,7 @@ const euler = (x, y, z) => { const c = Math.cos, s = Math.sin; const [cx, sx, cy
 // 3. 놓인 높이: 책상 위·상대 위에 멈췄을 때 떠 있거나 파고들지 않는가
 {
   let worst = 0, at = '';
-  for (const t of TYPE_KEYS) {
+  for (const t of TYPE_KEYS.filter((k) => !TYPES[k].parts)) {
     const d = TYPES[t].dims;
     const sim = new Sim(RAPIER, { bodies: [{ p: [0, d[1] + 0.3, 0], q: yawQuat(0.3), type: t }, { p: [1.5, TYPES.jumbo.dims[1], 0], q: yawQuat(0), type: 'jumbo' }] }, S);
     for (let k = 0; k < 480; k++) sim.step();
@@ -83,14 +83,27 @@ const euler = (x, y, z) => { const c = Math.cos, s = Math.sin; const [cx, sx, cy
 // 5. 충돌체와 그림의 크기: 그리는 쪽은 TYPES.dims를 그대로 쓰므로 충돌체의 바깥 치수만 확인한다
 {
   let ok = true; const notes = [];
-  for (const t of TYPE_KEYS) {
+  for (const t of TYPE_KEYS.filter((k) => !TYPES[k].parts)) {
     const sim = new Sim(RAPIER, { bodies: [{ p: [0, 1, 0], q: yawQuat(0), type: t }, { p: [2, 1, 0], q: yawQuat(0), type: t }] }, S);
-    const he = sim.cols[0].halfExtents(), r = sim.cols[0].roundRadius();
+    const he = sim.cols[0][0].halfExtents(), r = sim.cols[0][0].roundRadius();
     const outer = [he.x + r, he.y + r, he.z + r];
     if (outer.some((v, i) => Math.abs(v - TYPES[t].dims[i]) > 1e-6)) ok = false;
     notes.push(`${TYPES[t].name} ${outer.map((v) => (v * 20).toFixed(1)).join('×')}cm`);
     sim.free();
   }
   check('5. 충돌체 바깥 치수가 그리는 모양과 같다', ok, notes.join(', '));
+}
+// 6. 모양 지우개: 책상 위에 떨어뜨렸을 때 책상을 뚫지 않고 그 위에 멈추는가
+{
+  let ok = true; const notes = [];
+  for (const t of TYPE_KEYS.filter((k) => TYPES[k].parts)) {
+    const sim = new Sim(RAPIER, { bodies: [{ p: [0, 0.6, 0], q: euler(0.4, 0.3, 0.2), type: t }, { p: [2.2, TYPES.normal.dims[1], 1.2], q: yawQuat(0), type: 'normal' }] }, S);
+    let minY = 9; for (let k = 0; k < 720; k++) { sim.step(); minY = Math.min(minY, sim.bodies[0].translation().y); }
+    const y = sim.bodies[0].translation().y, v = sim.speeds(0);
+    if (!(minY > 0.015 && y < 0.25 && v.lin < 0.05 && v.ang < 0.3)) ok = false;
+    notes.push(`${TYPES[t].name} ${(y * 10).toFixed(1)}cm`);
+    sim.free();
+  }
+  check('6. 모양 지우개가 책상을 뚫지 않고 그 위에 가만히 멈춘다(중심 높이)', ok, notes.join(', '));
 }
 console.log(`\n통과 ${pass} / 문제 ${fail}`);

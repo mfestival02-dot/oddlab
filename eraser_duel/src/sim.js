@@ -1,5 +1,5 @@
 // 물리 시뮬레이션. 화면과 무관하게 돌아가므로 Node에서도 같은 코드로 검증한다.
-import { DT, GEOM, TYPES, HITS, spotsOf } from './config.js';
+import { DT, GEOM, TYPES, HITS, spotsOf, shapeOf } from './config.js';
 
 const rot = (q, v) => {            // 쿼터니언으로 벡터 회전
   const { x, y, z, w } = q, [vx, vy, vz] = v;
@@ -41,10 +41,18 @@ export class Sim {
         .setTranslation(b.p[0], b.p[1], b.p[2]).setRotation(b.q)
         .setLinvel(...(b.lv || [0, 0, 0])).setAngvel({ x: (b.av || [0, 0, 0])[0], y: (b.av || [0, 0, 0])[1], z: (b.av || [0, 0, 0])[2] })
         .setLinearDamping(this.S.linDamp).setAngularDamping(this.S.angDamp * (TYPES[b.type || 'normal'].ang ?? 1)).setCcdEnabled(true).setSoftCcdPrediction(0.12).setCanSleep(true));
-      const type = b.type || 'normal', T = TYPES[type], [hx, hy, hz] = T.dims, r = Math.min(T.round ?? GEOM.round, hy * 0.9);
-      const col = world.createCollider(RAPIER.ColliderDesc.roundCuboid(hx - r, hy - r, hz - r, r)
-        .setMass(T.mass).setFriction(this.S.friction * T.fr).setRestitution(Math.min(0.95, this.S.restitution * T.re)), body);
-      this.bodies.push(body); this.cols.push(col); this.fallen.push(!!b.fallen); this.types.push(type); this.dims.push(T.dims);
+      const type = b.type || 'normal', T = TYPES[type], shape = shapeOf(type);
+      // 모양은 덩어리 여러 개를 한 몸에 붙여 만든다. 무게는 부피 비율로 나눈다.
+      const cols = shape.parts.map((pt) => {
+        let d;
+        if (pt.s === 'box') { const r = Math.min(pt.round ?? GEOM.round, Math.min(...pt.h) * 0.9); d = RAPIER.ColliderDesc.roundCuboid(pt.h[0] - r, pt.h[1] - r, pt.h[2] - r, r); }
+        else if (pt.s === 'cyl') d = RAPIER.ColliderDesc.roundCylinder(pt.hh - 0.008, pt.rad - 0.008, 0.008);
+        else if (pt.s === 'ball') d = RAPIER.ColliderDesc.ball(pt.rad);
+        else d = RAPIER.ColliderDesc.convexHull(new Float32Array(pt.pts.flat()));
+        if (pt.s !== 'hull') d.setTranslation(pt.p[0], pt.p[1], pt.p[2]).setRotation(pt.q);
+        return world.createCollider(d.setMass(T.mass * pt.vol).setFriction(this.S.friction * T.fr).setRestitution(Math.min(0.95, this.S.restitution * T.re)), body);
+      });
+      this.bodies.push(body); this.cols.push(cols); this.fallen.push(!!b.fallen); this.types.push(type); this.dims.push(T.dims);
     });
   }
   free() { this.world.free(); }
@@ -129,6 +137,11 @@ export class Sim {
   }
 
   step() {
+    // 거의 멈춘 지우개의 잔떨림은 고무처럼 금방 가라앉힌다(느릴 때만 감쇠를 더한다. 힘을 보태지는 않는다).
+    for (const b of this.bodies) {
+      const v = b.linvel(), w = b.angvel(), lin = Math.hypot(v.x, v.y, v.z), ang = Math.hypot(w.x, w.y, w.z);
+      if (lin < 0.3 && ang < 4 && ang > 1e-4) b.setAngvel({ x: w.x * 0.94, y: w.y * 0.94, z: w.z * 0.94 }, false);
+    }
     this.world.step();
     this.time += DT;
     this.bodies.forEach((b, i) => { if (!this.fallen[i] && b.translation().y < GEOM.fallY) this.fallen[i] = true; });
@@ -141,16 +154,16 @@ export class Sim {
   contact() {
     const out = { touching: false, upper: null, normalY: 0, points: 0 };
     const c0 = this.bodies[0].translation(), c1 = this.bodies[1].translation();
-    this.world.contactPair(this.cols[0], this.cols[1], (m) => {
+    for (const ca of this.cols[0]) for (const cb of this.cols[1]) this.world.contactPair(ca, cb, (m) => {
       const n = m.numSolverContacts();
       if (n === 0) return;
       let py = 0, deep = false;
       for (let k = 0; k < n; k++) { py += m.solverContactPoint(k).y; if (m.solverContactDist(k) < 0.004) deep = true; }
       py /= n;
       if (!deep) return;                         // 닿을 듯 말 듯한 예측 접촉은 제외
-      out.touching = true; out.points = n;
+      out.touching = true; out.points += n;
       const ny = Math.abs(m.normal().y);
-      out.normalY = ny;
+      out.normalY = Math.max(out.normalY, ny);
       // 받침: 접촉면이 위아래를 향하고(법선이 세로에 가까움), 접촉점이 위쪽 물체의 중심보다 아래·아래쪽 물체의 중심보다 위에 있다
       if (ny < 0.6) return;
       if (c0.y > py && c1.y < py) out.upper = 0;

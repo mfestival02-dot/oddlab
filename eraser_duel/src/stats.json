@@ -1,0 +1,146 @@
+{
+ "normal": {
+  "speed": 0.81,
+  "hop": 0.75,
+  "balance": 1,
+  "weight": 0.42,
+  "cm": 13.8,
+  "hopCm": 1.7
+ },
+ "sharp": {
+  "speed": 0.81,
+  "hop": 0.75,
+  "balance": 1,
+  "weight": 0.44,
+  "cm": 13.8,
+  "hopCm": 1.7
+ },
+ "worn": {
+  "speed": 0.95,
+  "hop": 0.82,
+  "balance": 0.5,
+  "weight": 0.29,
+  "cm": 16.2,
+  "hopCm": 1.8
+ },
+ "half": {
+  "speed": 0.98,
+  "hop": 1,
+  "balance": 0.33,
+  "weight": 0.23,
+  "cm": 16.7,
+  "hopCm": 2.2
+ },
+ "flat": {
+  "speed": 0.87,
+  "hop": 0.71,
+  "balance": 1,
+  "weight": 0.29,
+  "cm": 14.9,
+  "hopCm": 1.6
+ },
+ "square": {
+  "speed": 0.82,
+  "hop": 0.88,
+  "balance": 0.25,
+  "weight": 0.4,
+  "cm": 14.1,
+  "hopCm": 1.9
+ },
+ "long": {
+  "speed": 0.83,
+  "hop": 0.69,
+  "balance": 1,
+  "weight": 0.38,
+  "cm": 14.2,
+  "hopCm": 1.5
+ },
+ "art": {
+  "speed": 0.58,
+  "hop": 0.65,
+  "balance": 1,
+  "weight": 1,
+  "cm": 9.9,
+  "hopCm": 1.4
+ },
+ "mini": {
+  "speed": 1,
+  "hop": 0.56,
+  "balance": 0.5,
+  "weight": 0.21,
+  "cm": 17.1,
+  "hopCm": 1.2
+ },
+ "jumbo": {
+  "speed": 0.62,
+  "hop": 0.61,
+  "balance": 1,
+  "weight": 0.88,
+  "cm": 10.6,
+  "hopCm": 1.3
+ },
+ "bouncy": {
+  "speed": 0.68,
+  "hop": 0.52,
+  "balance": 1,
+  "weight": 0.33,
+  "cm": 11.6,
+  "hopCm": 1.1
+ },
+ "bear": {
+  "speed": 0.83,
+  "hop": 0.75,
+  "balance": 1,
+  "weight": 0.38,
+  "cm": 14.2,
+  "hopCm": 1.7
+ },
+ "rabbit": {
+  "speed": 0.95,
+  "hop": 0.86,
+  "balance": 0.5,
+  "weight": 0.25,
+  "cm": 16.2,
+  "hopCm": 1.9
+ },
+ "turtle": {
+  "speed": 0.65,
+  "hop": 0.72,
+  "balance": 1,
+  "weight": 0.71,
+  "cm": 11.1,
+  "hopCm": 1.6
+ },
+ "wrest1": {
+  "speed": 0.84,
+  "hop": 0.69,
+  "balance": 0.33,
+  "weight": 0.33,
+  "cm": 14.4,
+  "hopCm": 1.5
+ },
+ "wrest2": {
+  "speed": 0.7,
+  "hop": 0.76,
+  "balance": 1,
+  "weight": 0.63,
+  "cm": 11.9,
+  "hopCm": 1.7
+ },
+ "roll": {
+  "speed": 0.86,
+  "hop": 0.85,
+  "balance": 0.5,
+  "weight": 0.31,
+  "cm": 14.6,
+  "hopCm": 1.9
+ },
+ "prism": {
+  "speed": 0.84,
+  "hop": 0.99,
+  "balance": 1,
+  "weight": 0.33,
+  "cm": 14.3,
+  "hopCm": 2.2
+ }
+}

@@ -6,7 +6,7 @@ import { SUCCESS_PRESET } from './preset.js';
 import { yawQuat } from './sim.js';
 import { initialLayout, TYPES, TYPE_KEYS, HITS } from './config.js';
 import { loadMeta, applyResult } from './meta.js';
-import { eraserCard } from './cards.js';
+import { eraserCard, abilityBars } from './cards.js';
 
 const KIND = { 끝: ['k-end', '#58b96a', '끝', '곧게 나가요 (쉬움)'], 옆: ['k-side', '#f0b83a', '옆', '세게 누르면 데굴데굴 굴러요'], 꼭짓점: ['k-corner', '#e2473a', '꼭짓점', '높이 뜨고 어디로 튈지 몰라요 (어려움)'], 안쪽: ['k-in', '#4a8fe0', '안쪽', '낮게 미끄러져요'] };
 
@@ -62,7 +62,7 @@ export class UI {
     if (solo) this.picks[1] = TYPE_KEYS[Math.floor(Math.random() * TYPE_KEYS.length)];
     $('pickTitle').textContent = solo ? '필통에서 지우개 고르기' : '지우개 고르기';
     $('pickInfo').textContent = solo ? `이기면 상대 지우개를 따고, 지면 내 지우개를 뺏겨요. (${this.meta.wins}승 ${this.meta.losses}패)` : '둘이서 하나씩 골라요.';
-    const head = (id, label, k) => { $(id).textContent = `${label}: ${TYPES[k].name} `; $(id).append(el('span', { className: 'pickDesc', textContent: TYPES[k].desc })); };
+    const head = (id, label, k) => { $(id).textContent = `${label}: ${TYPES[k].name} `; $(id).append(el('span', { className: 'pickDesc', textContent: TYPES[k].desc }), abilityBars(k, id === 'pickH0' ? 0 : 1)); };
     head('pickH0', solo ? '내 지우개 (1P)' : '1P 지우개', this.picks[0]); head('pickH1', solo ? '컴퓨터가 꺼낸 지우개' : '2P 지우개', this.picks[1]);
     for (const side of [0, 1]) {
       const box = $('cards' + side); box.innerHTML = '';

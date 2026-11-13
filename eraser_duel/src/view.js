@@ -1,7 +1,8 @@
 // 그리기: 책상, 지우개, 방향 화살표, 카메라, 디버그 표시
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { GEOM, TYPES } from './config.js';
+import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
+import { GEOM, TYPES, shapeOf } from './config.js';
 import { Fx } from './fx.js';
 import { PHASE } from './game.js';
 
@@ -83,7 +84,19 @@ export class View {
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
     container.appendChild(r.domElement);
     const scene = this.scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf1ead9);
+    // 교실은 따로 작게 그려 흐릿한 배경으로 쓴다: 무대(책상)만 또렷하게 보이게
+    this.bg = new THREE.Scene(); this.bg.background = new THREE.Color(0xe9dfca);
+    this.bg.add(new THREE.HemisphereLight(0xfff4e2, 0x9a8a78, 1.25));
+    const bgSun = new THREE.DirectionalLight(0xfff1d6, 1.6); bgSun.position.set(-30, 30, 8); this.bg.add(bgSun);
+    // 두 번 줄여 그린 뒤 부드럽게 늘린다(작게 그린 그림을 한 번 더 절반으로 줄여 계단 무늬를 없앤다)
+    const rt = () => { const t = new THREE.WebGLRenderTarget(64, 36, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }); t.texture.colorSpace = THREE.SRGBColorSpace; return t; };
+    this.bgRT0 = rt(); this.bgRT = rt();
+    this.blurScene = new THREE.Scene(); this.blurCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.blurMat = new THREE.ShaderMaterial({ uniforms: { map: { value: this.bgRT0.texture }, px: { value: new THREE.Vector2(1 / 64, 1 / 36) } }, depthTest: false,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: 'uniform sampler2D map; uniform vec2 px; varying vec2 vUv; void main(){ vec4 c = vec4(0.0); for (int x = -2; x <= 2; x++) for (int y = -2; y <= 2; y++) c += texture2D(map, vUv + vec2(float(x), float(y)) * px * 1.5); gl_FragColor = c / 25.0; }' });
+    this.blurScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.blurMat));
+    scene.background = this.bgRT.texture; scene.backgroundIntensity = 0.78;
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 260);
 
     scene.add(new THREE.HemisphereLight(0xfff4e2, 0x8a7a6a, 1.15));
@@ -115,6 +128,10 @@ export class View {
 
     this.cam = { az: Math.PI, pos: new THREE.Vector3(-3, 2, 0), look: new THREE.Vector3(), init: false };
     this.setTypes(['normal', 'normal']);
+    // 책상 위 공책 한 장(납작해서 지우개가 그 위를 지나가도 자연스럽다)
+    const paperTex = canvasTex(256, 340, (g, w, h) => { g.fillStyle = '#fbf6e4'; g.fillRect(0, 0, w, h); g.strokeStyle = '#b9d3ea'; g.lineWidth = 1.5; for (let y = 34; y < h; y += 22) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); } g.strokeStyle = '#ef9d98'; g.beginPath(); g.moveTo(30, 0); g.lineTo(30, h); g.stroke(); g.fillStyle = 'rgba(60,56,60,0.75)'; g.font = `700 20px ${FONT}`; g.fillText('오늘의 대진표', 44, 28); g.font = `400 16px ${FONT}`; ['1교시 끝: 나 vs 짝꿍', '2교시 끝: 이긴 사람', '점심: 결승!'].forEach((t, i) => g.fillText(t, 44, 54 + i * 22)); });
+    const paper = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.0), new THREE.MeshStandardMaterial({ map: paperTex, roughness: 0.9 }));
+    paper.rotation.set(-Math.PI / 2, 0, 0.35); paper.position.set(2.05, 0.004, -0.95); paper.receiveShadow = true; scene.add(paper);
     this.resize();
     addEventListener('resize', () => this.resize());
   }
@@ -127,6 +144,8 @@ export class View {
     this.camera.fov = this.baseFov;
     this.camera.updateProjectionMatrix();
     this.fx.setScale(h * this.renderer.getPixelRatio() / (2 * Math.tan((this.baseFov * Math.PI) / 360)));
+    const bw = Math.max(64, Math.round(w / 5)), bh = Math.max(36, Math.round(h / 5));          // 5분의 1 크기로 그려 흐린 뒤 늘리면 초점이 나간 듯 보인다
+    this.bgRT0.setSize(bw, bh); this.bgRT.setSize(bw, bh); this.blurMat.uniforms.px.value.set(1 / bw, 1 / bh);
   }
 
   _desk() {
@@ -165,7 +184,7 @@ export class View {
   }
   // 교실: 우리 책상은 한가운데 줄에 있다. 칠판은 -z 쪽, 창문은 -x 쪽.
   _room() {
-    const s = this.scene, F = GEOM.floorY, std = (color, rough = 0.8) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const s = this.bg, F = GEOM.floorY, std = (color, rough = 0.8) => new THREE.MeshStandardMaterial({ color, roughness: rough });
     const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); s.add(m); return m; };
     const W = 46, ZF = -44, ZB = 40, H = 30;                       // 반폭, 앞벽, 뒷벽, 천장 높이(바닥 기준)
     // 바닥(나무 마루)
@@ -177,7 +196,7 @@ export class View {
     });
     floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping; floorTex.repeat.set(9, 8);
     const floor = add(new THREE.PlaneGeometry(W * 2, ZB - ZF), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.6 }), 0, F, (ZF + ZB) / 2);
-    floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
+    floor.rotation.x = -Math.PI / 2;
     // 벽과 천장
     const wall = std(0xf1ead9, 0.95), dado = std(0xc9d8c2, 0.9);
     add(new THREE.PlaneGeometry(W * 2, H), wall, 0, F + H / 2, ZF);
@@ -222,14 +241,15 @@ export class View {
     const spots = [];
     for (let ix = -3; ix <= 3; ix++) for (let iz = -2; iz <= 2; iz++) spots.push([ix * 12, iz * 14.5, ix === 0 && iz === 0]);
     const others = spots.filter((p) => !p[2]), n = others.length, m4 = new THREE.Matrix4();
-    const inst = (geo, mat, count) => { const im = new THREE.InstancedMesh(geo, mat, count); im.receiveShadow = true; s.add(im); return im; };
+    const inst = (geo, mat, count) => { const im = new THREE.InstancedMesh(geo, mat, count); s.add(im); return im; };
     const tops = inst(deskTop, std(0xd3a468, 0.6), n), legs = inst(leg, std(0x6f7780, 0.45), n * 4);
     const seats = inst(seat, std(0xc08f57, 0.7), spots.length), backs = inst(back, std(0xc08f57, 0.7), spots.length), clegs = inst(cleg, std(0x6f7780, 0.45), spots.length * 4);
     others.forEach(([x, z], i) => {
       tops.setMatrixAt(i, m4.makeTranslation(x, -0.125, z));
       [[-2.7, -1.7], [2.7, -1.7], [-2.7, 1.7], [2.7, 1.7]].forEach(([dx, dz], k) => legs.setMatrixAt(i * 4 + k, m4.makeTranslation(x + dx, (F - 0.25) / 2, z + dz)));
     });
-    spots.forEach(([x, z], i) => {
+    spots.forEach(([x, z, mine], i) => {
+      if (mine) { seats.setMatrixAt(i, m4.makeScale(0, 0, 0)); backs.setMatrixAt(i, m4.makeScale(0, 0, 0)); for (let k = 0; k < 4; k++) clegs.setMatrixAt(i * 4 + k, m4.makeScale(0, 0, 0)); return; }   // 우리 자리 의자는 치워 둔다
       seats.setMatrixAt(i, m4.makeTranslation(x, F + 4.3, z + 5.6)); backs.setMatrixAt(i, m4.makeTranslation(x, F + 6.0, z + 7.2));
       [[-1.6, 4.1], [1.6, 4.1], [-1.6, 7.1], [1.6, 7.1]].forEach(([dx, dz], k) => clegs.setMatrixAt(i * 4 + k, m4.makeTranslation(x + dx, F + 2.1, z + dz)));
     });
@@ -249,7 +269,7 @@ export class View {
       this._tc = new THREE.PerspectiveCamera(28, 200 / 130, 0.1, 20); this._tc.position.set(0.9, 0.85, 1.25); this._tc.lookAt(0, 0, 0);
     }
     const keep = this.scene; this.scene = this._ts;
-    const mesh = this._eraser(PLAYER[side], TYPES[type]);
+    const mesh = this._eraser(PLAYER[side], TYPES[type], type);
     this.scene = keep;
     mesh.rotation.y = 0.5; this._tr.render(this._ts, this._tc);
     this._ts.remove(mesh);
@@ -261,16 +281,35 @@ export class View {
     if (this.types && this.types[0] === types[0] && this.types[1] === types[1]) return;
     this.types = [...types];
     for (const o of [...this.erasers, ...this.wires]) this.scene.remove(o);
-    this.erasers = types.map((t, i) => this._eraser(PLAYER[i], TYPES[t]));
+    this.erasers = types.map((t, i) => this._eraser(PLAYER[i], TYPES[t], t));
     this.wires = types.map((t) => {
       const [hx, hy, hz] = TYPES[t].dims;
       const w = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2)), new THREE.LineBasicMaterial({ color: 0x00ff88, depthTest: false }));
       w.visible = false; w.renderOrder = 30; this.scene.add(w); return w;
     });
   }
-  _eraser(pl, T) {
-    const [hx, hy, hz] = T.dims;
+  _eraser(pl, T, type) {
+    const [hx, hy, hz] = T.dims, shape = shapeOf(type);
     const g = new THREE.Group(), inner = new THREE.Group();
+    if (!shape.plain) {
+      // 모양 지우개: 한 가지 색 고무(플레이어 색 계열)로 덩어리들을 빚는다
+      const col = new THREE.Color(pl.color).lerp(new THREE.Color(0xffffff), 0.16); const hsl = {}; col.getHSL(hsl); col.setHSL((hsl.h + (T.tone || 0) * 0.035 + 1) % 1, hsl.s, Math.min(0.78, Math.max(0.32, hsl.l + (T.tone || 0) * 0.16)));
+      const rubber = new THREE.MeshStandardMaterial({ color: col, roughness: 0.78 });
+      for (const pt of shape.parts) {
+        let geo;
+        if (pt.s === 'box') geo = new RoundedBoxGeometry(pt.h[0] * 2, pt.h[1] * 2, pt.h[2] * 2, 3, Math.min(0.02, Math.min(...pt.h) * 0.45));
+        else if (pt.s === 'cyl') geo = new THREE.CylinderGeometry(pt.rad, pt.rad, pt.hh * 2, 28);
+        else if (pt.s === 'ball') geo = new THREE.SphereGeometry(pt.rad, 22, 16);
+        else geo = new ConvexGeometry(pt.pts.map((v) => new THREE.Vector3(...v)));
+        const m = new THREE.Mesh(geo, rubber);
+        if (pt.s !== 'hull') { m.position.set(...pt.p); m.quaternion.set(pt.q.x, pt.q.y, pt.q.z, pt.q.w); }
+        m.castShadow = m.receiveShadow = true; inner.add(m);
+      }
+      const ink = new THREE.MeshStandardMaterial({ color: 0x2b2228, roughness: 0.5 });
+      for (const d of shape.decor) { const m = new THREE.Mesh(new THREE.SphereGeometry(d.s === 'eye' ? 0.016 : 0.013, 10, 8), ink); m.position.set(d.p[0], d.p[1] + 0.002, d.p[2]); m.scale.y = 0.5; inner.add(m); }
+      g.add(inner); g.userData.inner = inner; this.scene.add(g);
+      return g;
+    }
     const rubber = new THREE.Mesh(new RoundedBoxGeometry(hx * 2, hy * 2, hz * 2, 4, Math.min(0.02, hy * 0.4)),
       new THREE.MeshStandardMaterial({ color: pl.rubber, roughness: 0.82 }));
     const tex = sleeveTexture(pl, T.name);
@@ -320,6 +359,10 @@ export class View {
     if (this.normalArrow.visible) this.normalArrow.position.set((bodies[0].p[0] + bodies[1].p[0]) / 2, Math.max(bodies[0].p[1], bodies[1].p[1]), (bodies[0].p[2] + bodies[1].p[2]) / 2);
     this.fx.update(dt);
     this._camera(game, bodies, dt);
+    const tm = this.renderer.toneMapping; this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.setRenderTarget(this.bgRT0); this.renderer.render(this.bg, this.camera);
+    this.renderer.setRenderTarget(this.bgRT); this.renderer.render(this.blurScene, this.blurCam);
+    this.renderer.setRenderTarget(null); this.renderer.toneMapping = tm;
     this.renderer.render(this.scene, this.camera);
   }
   _camera(game, bodies, dt) {
