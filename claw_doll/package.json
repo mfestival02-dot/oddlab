@@ -1,0 +1,11 @@
+{
+  "name": "claw-doll",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs" },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "esbuild": "^0.25.0",
+    "three": "^0.170.0"
+  }
+}

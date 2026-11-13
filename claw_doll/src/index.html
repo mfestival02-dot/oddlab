@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>인형뽑기 속 인형</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0a18; overflow: hidden; }
+  body { font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; color: #fff6ea; }
+  #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .chip { position: fixed; z-index: 5; background: rgba(24, 16, 40, .62); border: 1px solid rgba(255, 220, 190, .22);
+    border-radius: 14px; padding: 9px 14px; font-size: 14px; line-height: 1.5; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  #title { left: 16px; top: 16px; font-weight: 800; letter-spacing: -.01em; }
+  #title small { display: block; font-weight: 600; color: #ffc98f; font-size: 12px; }
+  #hint { left: 50%; bottom: 18px; transform: translateX(-50%); white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; }
+  kbd { display: inline-block; min-width: 18px; text-align: center; font: inherit; font-weight: 800; font-size: 12px; color: #2a1a33;
+    background: #ffe2c2; border-radius: 6px; padding: 1px 7px; margin: 0 3px 0 10px; box-shadow: 0 2px 0 #c99a72; }
+  kbd:first-child { margin-left: 0; }
+  #hide { right: 16px; top: 16px; min-width: 150px; }
+  #hide small { color: #ffc98f; font-size: 12px; font-weight: 600; }
+  #hideBar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.16); margin-top: 6px; overflow: hidden; }
+  #hideBar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffb37a, #ff7fa8); border-radius: 4px; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 9; background: #0d0a18; font-size: 16px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="chip" id="title">인형뽑기 속 인형<small>v2 룩 시안 · 규칙 없음</small></div>
+<div class="chip" id="hide"><small>숨은 정도</small><div id="hideLabel">드러남</div><div id="hideBar"><i id="hideFill"></i></div></div>
+<div class="chip" id="hint"><kbd>WASD</kbd>엉금엉금 <kbd>Space</kbd>파고들기 <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>손님 표정 <kbd>Q</kbd>화질</div>
+<div id="loading">인형을 쌓는 중…</div>
+<script>/*BUNDLE*/</script>
+</body>
+</html>
